@@ -13,10 +13,6 @@ async function bootstrap() {
     }),
   );
 
-  // --bucket mock-kafka-bucket
-  // --max-batch-size (MB) 4
-  // --max-batch-duration 200ms
-
   await app.listen(8123);
 }
 bootstrap();

@@ -18,7 +18,7 @@ Response: (409: TopicAlreadyExistsException)
 Note: Messages need to be less than 1Kb.
 
 ```bash
-POST http://localhost:8123/topics/hello/produce/0 -d "key:value"
+CURL -X POST http://localhost:8123/topics/hello/produce/0 -d "key:value"
 ```
 
 
