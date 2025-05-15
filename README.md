@@ -1,6 +1,6 @@
-# Simple Kafka Service
+# Local Kafka Service
 
-Simple Kafka Service is a fun exercise of a single-node kafka compatabile server that persists messages to S3. For the purpose
+Local Kafka Service is a fun exercise of a single-node kafka compatabile server that persists messages to S3. For the purpose
 
 ## Control Plane
 ### Creating a Topic
@@ -31,6 +31,7 @@ CURL -X POST http://localhost:8123/topics/hello/produce/0 -d "key:value"
 ## Compaction
 
 ## Failure Scenarios
+- slow flush beats newer flush()
 
 ## Testing
 
