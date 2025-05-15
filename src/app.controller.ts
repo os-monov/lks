@@ -3,6 +3,17 @@ import { IsNumber, Max, Min } from 'class-validator';
 import { ApiResponse } from '@nestjs/swagger';
 import { Response } from 'express';
 import { Type } from 'class-transformer';
+import { RecordLogManager } from './record/record.log.manager';
+import {
+  InternalServerException,
+  InvalidRecordException,
+  PartitionNotFoundException,
+} from './exceptions';
+import { Record } from './record/record';
+import { FilePosition, Offset } from './record/types';
+import { RecordCache } from './record/record.cache';
+import { RecordLog } from './record/record.log';
+import { ControlPlaneService } from './control.plane.service';
 
 export class ProduceRecordParams {
   @IsNumber()
@@ -22,7 +33,11 @@ export class FetchRecordsParams {
 
 @Controller()
 export class AppController {
-  constructor() { }
+  constructor(
+    private readonly manager: RecordLogManager,
+    private readonly cache: RecordCache,
+    private readonly controlPlaneService: ControlPlaneService,
+  ) {}
 
   @Post('produce/:partitionId')
   @ApiResponse({
@@ -33,22 +48,52 @@ export class AppController {
     @Body() input: any,
     @Res() response: Response,
   ): Promise<any> {
-    // writer = (bucket)
-    // let message = new Message(0, 0, '');
+    const log = this.manager.getLog(params.partitionId);
+    if (!log) {
+      throw new PartitionNotFoundException();
+    }
 
-    response.json();
+    const callback = (result: number | Error) => {
+      if (result instanceof Error) {
+        throw new InternalServerException();
+      }
+      response.json({ offset: result });
+    };
+
+    const parts = input.toString().split(':', 2);
+    if (parts.length != 2) {
+      throw new InvalidRecordException();
+    }
+    const [key, value] = parts;
+
+    log.write(params.partitionId, key, value, callback);
   }
 
   @Get('fetch/:partitionId')
   @ApiResponse({
     status: 200,
-    // type: [],
+    type: [Record],
   })
   async fetchRecords(
     @Param() params: FetchRecordsParams,
     @Res() response: Response,
   ): Promise<void> {
+    const log: RecordLog = this.manager.getLog(params.partitionId);
+    if (!log) {
+      throw new PartitionNotFoundException();
+    }
 
-    response.json([]);
+    const offset: Offset = this.cache.offset(params.partitionId);
+    const position: FilePosition = this.controlPlaneService.findPosition(
+      params.partitionId,
+      offset,
+    );
+    const tail: Record[] = await log.query(params.partitionId, position);
+
+    this.cache.insert(params.partitionId, tail);
+
+    const result: Record[] = this.cache.get(params.partitionId);
+
+    response.json(result);
   }
 }

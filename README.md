@@ -32,6 +32,7 @@ CURL -X POST http://localhost:8123/topics/hello/produce/0 -d "key:value"
 
 ## Failure Scenarios
 - slow flush beats newer flush()
+- flushing on size instead of time
 
 ## Testing
 

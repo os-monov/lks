@@ -5,11 +5,6 @@ import { AppController } from './app.controller';
 @Module({
   imports: [],
   controllers: [AppController],
-  providers: [
-    ControlPlaneService,
-    // ObjectStorageService,
-    // BatchedMessageWriter,
-    // QueryService,
-  ],
+  providers: [ControlPlaneService],
 })
 export class AppModule {}

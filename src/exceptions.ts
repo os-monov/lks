@@ -6,3 +6,24 @@ export class MessageSizeLimitException extends HttpException {
     this.name = 'MessageSizeExceededException';
   }
 }
+
+export class PartitionNotFoundException extends HttpException {
+  constructor() {
+    super(`Partition does not exist.`, 400); // Invalid Input
+    this.name = 'PartitionNotFoundException';
+  }
+}
+
+export class InternalServerException extends HttpException {
+  constructor() {
+    super('InternalServerException', 500);
+    this.name = 'InternalServerException';
+  }
+}
+
+export class InvalidRecordException extends HttpException {
+  constructor() {
+    super('InvalidRecordException', 400);
+    this.name = 'InvalidRecordException';
+  }
+}
