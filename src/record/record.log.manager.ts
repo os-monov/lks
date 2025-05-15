@@ -1,19 +1,27 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { RecordLog } from './record.log';
-import { hash } from 'crypto';
+import { ControlPlaneService } from 'src/control.plane.service';
 
 @Injectable()
 export class RecordLogManager {
-  private readonly map = Map<number, RecordLog>;
+  private logs: RecordLog[] = [];
 
-  constructor(private readonly logCount = 4) {
-    // for index in logCount
-    // log = RecordLog(index)
+  constructor(
+    private readonly controlPlaneService: ControlPlaneService,
+    @Inject('LOG_COUNT') private readonly logCount: number,
+  ) {
+    for (let index = 0; index < this.logCount; index++) {
+      this.logs.push(new RecordLog(this.controlPlaneService, index));
+    }
   }
 
+  /**
+   * Gets {@link RecordLog} that partition should write to.
+   * @param partitionId
+   * @returns
+   */
   getLog(partitionId: number): RecordLog {
-    // const hash = hash(partitionId) % self.map
-    // return self.map.get(hash)
-    return;
+    const index = partitionId % this.logs.length;
+    return this.logs[index];
   }
 }

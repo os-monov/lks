@@ -1,19 +1,32 @@
 import * as fs from 'fs';
 import { Record } from './record';
 import { ControlPlaneService } from 'src/control.plane.service';
-import { Injectable } from '@nestjs/common';
 import { FilePosition, PartitionId } from './types';
+import * as path from 'path';
+import { BufferRecord } from './buffer.record';
 
-@Injectable()
 export class RecordLog {
-  private readonly dataDir = `/tmp/lks`;
+  private readonly dataDir: string;
+  private readonly logFile: string;
+  private readonly buffer: BufferRecord[] = [];
 
-  constructor(controlPlaneService: ControlPlaneService, index: number) {
+  constructor(
+    private readonly controlPlaneService: ControlPlaneService,
+    readonly index: number,
+  ) {
+    this.dataDir = `/tmp/lks`;
+    this.logFile = path.join(this.dataDir, `${index}.log`);
+
+    // Ensure data directory exists
     if (!fs.existsSync(this.dataDir)) {
       fs.mkdirSync(this.dataDir, { recursive: true });
     }
 
-    // create /tmp/lks/index.log
+    // Create log file if it doesn't exist
+    if (!fs.existsSync(this.logFile)) {
+      fs.writeFileSync(this.logFile, '');
+      console.log(`Created log file: ${this.logFile}`);
+    }
   }
 
   public async write(

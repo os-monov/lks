@@ -1,7 +1,9 @@
+import { Injectable } from '@nestjs/common';
 import { Record } from './record';
 import { Offset, PartitionId } from './types';
 const SortedSet = require('tlhunter-sorted-set');
 
+@Injectable()
 export class RecordCache {
   private readonly cache: Map<number, typeof SortedSet>;
 
