@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Res } from '@nestjs/common';
-import { IsNumber, Max, Min } from 'class-validator';
+import { IsNumber, IsString, Max, Min } from 'class-validator';
 import { ApiResponse } from '@nestjs/swagger';
 import { Response } from 'express';
 import { Type } from 'class-transformer';
@@ -23,6 +23,14 @@ export class ProduceRecordParams {
   partitionId: number;
 }
 
+export class ProduceRecordInput {
+  @IsString()
+  key: string;
+
+  @IsString()
+  value: string
+}
+
 export class FetchRecordsParams {
   @IsNumber()
   @Min(0)
@@ -37,7 +45,7 @@ export class AppController {
     private readonly manager: RecordLogManager,
     private readonly cache: RecordCache,
     private readonly controlPlaneService: ControlPlaneService,
-  ) {}
+  ) { }
 
   @Post('produce/:partitionId')
   @ApiResponse({
@@ -45,7 +53,7 @@ export class AppController {
   })
   async produceRecord(
     @Param() params: ProduceRecordParams,
-    @Body() input: any,
+    @Body() input: ProduceRecordInput,
     @Res() response: Response,
   ): Promise<any> {
     const log = this.manager.getLog(params.partitionId);
@@ -60,13 +68,7 @@ export class AppController {
       response.json({ offset: result });
     };
 
-    const parts = input.toString().split(':', 2);
-    if (parts.length != 2) {
-      throw new InvalidRecordException();
-    }
-    const [key, value] = parts;
-
-    log.write(params.partitionId, key, value, callback);
+    log.write(params.partitionId, input.key, input.value, callback);
   }
 
   @Get('fetch/:partitionId')

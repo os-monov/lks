@@ -12,9 +12,13 @@ import { RecordCache } from './record/record.cache';
     RecordCache,
     ControlPlaneService,
     {
+      provide: 'PARTITION_COUNT',
+      useValue: 100,
+    },
+    {
       provide: 'LOG_COUNT',
       useValue: 4,
     },
   ],
 })
-export class AppModule {}
+export class AppModule { }
