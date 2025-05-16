@@ -1,8 +1,8 @@
 import axios from 'axios';
 
 const SERVER_URL = 'http://localhost:8123';
-const PARTITIONS = 50;
-const RECORD_INTERVAL_MS = 200; // 1 second
+const PARTITIONS = 10;
+const RECORD_INTERVAL_MS = 10; // 1 second
 
 async function produce(partitionId) {
   const payload = {

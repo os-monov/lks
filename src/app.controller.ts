@@ -6,7 +6,6 @@ import { Type } from 'class-transformer';
 import { RecordLogManager } from './record/record.log.manager';
 import {
   InternalServerException,
-  InvalidRecordException,
   PartitionNotFoundException,
 } from './exceptions';
 import { Record } from './record/record';

@@ -123,6 +123,7 @@ export class RecordLog {
 
         const segmentOffset = records[0].getOffset();
         const commit: PartitionCommit = {
+          partitionId: partitionId,
           offset: segmentOffset,
           position: this.position,
         };

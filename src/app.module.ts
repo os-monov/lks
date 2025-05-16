@@ -8,9 +8,9 @@ import { RecordCache } from './record/record.cache';
   imports: [],
   controllers: [AppController],
   providers: [
+    ControlPlaneService,
     RecordLogManager,
     RecordCache,
-    ControlPlaneService,
     {
       provide: 'PARTITION_COUNT',
       useValue: 100,
