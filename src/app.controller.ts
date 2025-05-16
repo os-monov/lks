@@ -28,7 +28,7 @@ export class ProduceRecordInput {
   key: string;
 
   @IsString()
-  value: string
+  value: string;
 }
 
 export class FetchRecordsParams {
@@ -45,7 +45,7 @@ export class AppController {
     private readonly manager: RecordLogManager,
     private readonly cache: RecordCache,
     private readonly controlPlaneService: ControlPlaneService,
-  ) { }
+  ) {}
 
   @Post('produce/:partitionId')
   @ApiResponse({
@@ -61,6 +61,7 @@ export class AppController {
       throw new PartitionNotFoundException();
     }
 
+    // how to timeout after 500ms
     const callback = (result: number | Error) => {
       if (result instanceof Error) {
         throw new InternalServerException();

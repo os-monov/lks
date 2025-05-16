@@ -6,6 +6,6 @@ export type Offset = number;
 export type FilePosition = number;
 
 export interface PartitionCommit {
-    offset: Offset;
-    position: FilePosition;
+  offset: Offset;
+  position: FilePosition;
 }

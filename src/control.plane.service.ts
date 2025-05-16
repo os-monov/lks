@@ -13,7 +13,10 @@ import {
 export class ControlPlaneService {
   private readonly commits: Map<PartitionId, PartitionCommit[]> = new Map();
   private readonly dataDir = `/tmp/lks`;
-  private readonly metadataFilePath: string = path.join(this.dataDir, "metadata.json");
+  private readonly metadataFilePath: string = path.join(
+    this.dataDir,
+    'metadata.json',
+  );
 
   constructor() {
     if (!fs.existsSync(this.dataDir)) {
@@ -30,10 +33,8 @@ export class ControlPlaneService {
     if (fs.existsSync(this.metadataFilePath)) {
       try {
         // lets store metadata.json as { partition: PartitionCommit[] }
-
-
       } catch (error) {
-        console.log("Failed to load control plane metadata as a file.")
+        console.log('Failed to load control plane metadata as a file.');
         console.log(error);
       }
     }
@@ -44,21 +45,23 @@ export class ControlPlaneService {
    */
   private save(): void {
     try {
-      fs.writeFileSync(this.metadataFilePath, JSON.stringify(JSON.stringify(this.commits), null, 2))
-
+      fs.writeFileSync(
+        this.metadataFilePath,
+        JSON.stringify(JSON.stringify(this.commits), null, 2),
+      );
     } catch (error) {
-      console.log("Failed to save control plane metadata as a file.")
+      console.log('Failed to save control plane metadata as a file.');
       console.log(error);
     }
   }
 
   /**
    * Returns the last committed offset for a partition.
-   * @param partitionId 
-   * @returns 
+   * @param partitionId
+   * @returns
    */
   public offset(partitionId: PartitionId): Offset {
-    return 1
+    return 1;
   }
 
   public async commit(commits: PartitionCommit[]): Promise<void> {
