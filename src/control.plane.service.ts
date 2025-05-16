@@ -11,7 +11,7 @@ import {
   Offset,
   PartitionCommit,
   PartitionId,
-} from './record/types';
+} from './segment/types';
 
 @Injectable()
 export class ControlPlaneService implements OnModuleInit, OnModuleDestroy {
@@ -87,9 +87,9 @@ export class ControlPlaneService implements OnModuleInit, OnModuleDestroy {
    */
   public offset(partitionId: PartitionId): Offset {
     const commits: PartitionCommit[] = this.commits.get(partitionId);
-    if (commits.length === 0) {
-      return 1;
-    }
+    // if (commits.length === 0) {
+    //   return 1;
+    // }
 
     return commits.at(commits.length - 1).offset;
   }

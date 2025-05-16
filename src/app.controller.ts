@@ -9,7 +9,7 @@ import {
   PartitionNotFoundException,
 } from './exceptions';
 import { Record } from './record/record';
-import { FilePosition, Offset } from './record/types';
+import { FilePosition, Offset } from './segment/types';
 import { RecordCache } from './record/record.cache';
 import { RecordLog } from './record/record.log';
 import { ControlPlaneService } from './control.plane.service';
@@ -44,7 +44,7 @@ export class AppController {
     private readonly manager: RecordLogManager,
     private readonly cache: RecordCache,
     private readonly controlPlaneService: ControlPlaneService,
-  ) {}
+  ) { }
 
   @Post('produce/:partitionId')
   @ApiResponse({
