@@ -21,11 +21,14 @@ Note: Messages need to be less than 1Kb.
 CURL -X POST http://localhost:8123/topics/hello/produce/0 -d "key:value"
 ```
 
+- partition segment (offset and not duplicating data)
+- 
+
 
 ### Querying Messages
 
 
-### XML Diagram
+### UML Diagram
 
 
 ## Compaction
@@ -44,6 +47,10 @@ CURL -X POST http://localhost:8123/topics/hello/produce/0 -d "key:value"
 #### Heartbeat Monitoring -> Metadata Service
 #### Re-routing request (similar to Redis)
 
+
+- nvm use 18.18
+- pnpm run test
+- pnpm run start:dev
 
 ## Installation
 

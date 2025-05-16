@@ -6,7 +6,7 @@ import { Offset, PartitionId } from './types';
  */
 export class PartitionSegmentHeader {
   /* Defines the size of the header */
-  private static readonly SIZE = 16;
+  public static readonly SIZE = 16;
 
   /**
    * Immutable constructor.
@@ -28,7 +28,7 @@ export class PartitionSegmentHeader {
   static from(buffer: Buffer): PartitionSegmentHeader {
     const partitionId = buffer.readUInt32BE(0);
     const offset = buffer.readBigUInt64BE(4);
-    const payloadLength = buffer.readUint32BE(12);
+    const payloadLength = buffer.readUInt32BE(12);
 
     return new PartitionSegmentHeader(partitionId, offset, payloadLength);
   }
@@ -39,7 +39,7 @@ export class PartitionSegmentHeader {
    */
   public toBuffer(): Buffer {
     const buffer = Buffer.alloc(PartitionSegmentHeader.SIZE);
-    buffer.writeUint32BE(this.partitionId, 0);
+    buffer.writeUInt32BE(this.partitionId, 0);
     buffer.writeBigUInt64BE(this.offset, 4);
     buffer.writeUInt32BE(this.payloadLength, 12);
     return buffer;

@@ -1,12 +1,21 @@
 import { Offset } from '../segment/types';
 
 /**
- * Defines a key-value record.
+ * Defines a record.
  */
 export class Record {
   constructor(
+    /**
+     * Offset of the record within the partition, e.g. 1003.
+     */
     private readonly offset: Offset,
+    /**
+     * Key for the record, e.g. "cat".
+     */
     private readonly key: string,
+    /**
+     * Value for the record, e.g. "dog".
+     */
     private readonly value: string,
   ) {}
 
