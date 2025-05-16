@@ -10,7 +10,6 @@ export class PartitionSegment {
     private readonly payload: Record[],
   ) {
     // Calculate length during construction
-
   }
 
   public getPartitionId(): PartitionId {
@@ -28,8 +27,4 @@ export class PartitionSegment {
   public getPayload(): Record[] {
     return this.payload;
   }
-
-
-
-
 }

@@ -44,7 +44,7 @@ export class AppController {
     private readonly manager: RecordLogManager,
     private readonly cache: RecordCache,
     private readonly controlPlaneService: ControlPlaneService,
-  ) { }
+  ) {}
 
   @Post('produce/:partitionId')
   @ApiResponse({
