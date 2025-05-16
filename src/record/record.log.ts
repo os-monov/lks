@@ -6,6 +6,7 @@ import * as path from 'path';
 import { BufferRecord } from './buffer.record';
 import { InternalServerException } from 'src/exceptions';
 import { PartitionSegment } from './partition.segment';
+import { OnModuleDestroy } from '@nestjs/common';
 
 export class RecordLog {
   private readonly dataDir: string;
@@ -14,7 +15,7 @@ export class RecordLog {
   private activeBuffers: Map<PartitionId, BufferRecord[]> = new Map();
   private flushBuffers: Map<PartitionId, BufferRecord[]> = new Map();
   private isFlushing: boolean = false;
-  private flushInterval: NodeJS.Timeout;
+  private readonly flushInterval: NodeJS.Timeout;
   private FLUSH_INTERVAL_MS = 200;
 
   constructor(
@@ -161,10 +162,29 @@ export class RecordLog {
     }
   }
 
+  /**
+   * Query the log file for the relevant records.
+   * @param partitionId
+   * @param position
+   * @returns
+   */
   public async query(
     partitionId: PartitionId,
     position: FilePosition,
   ): Promise<Record[]> {
-    return [];
+    if (this.position === 0) {
+      return [];
+    }
+
+    // segmentHeader =
+
+    // fs.createReadStream(this.logFile, { start,  end })
+    // const data =
   }
+
+  // async onDestroy() {
+  //     clearInterval(this.flushInterval);
+  //     await this.flush();
+  //     console.log(`[RecordLog ${this.index}] Flushed on destroy`);
+  // }
 }

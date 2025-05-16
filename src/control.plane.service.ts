@@ -12,7 +12,6 @@ import {
   PartitionCommit,
   PartitionId,
 } from './record/types';
-import { partition } from 'rxjs';
 
 @Injectable()
 export class ControlPlaneService implements OnModuleInit, OnModuleDestroy {
