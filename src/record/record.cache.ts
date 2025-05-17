@@ -5,7 +5,6 @@ const SortedSet = require('tlhunter-sorted-set');
 
 /**
  * In-memory, per-partition record cache with fast ordered access.
- * Uses a Redis-style skip list for each partition.
  */
 @Injectable()
 export class RecordCache {

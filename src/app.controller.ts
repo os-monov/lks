@@ -15,14 +15,13 @@ import { PartitionNotFoundException } from './exceptions';
 import { FilePosition, Offset, PartitionId } from './segment/types';
 import { RecordCache } from './record/record.cache';
 import { ControlPlaneService } from './control.plane.service';
-import {
-  RecordLogWriter,
-} from './record/record.log.writer';
+import { RecordLogWriter } from './record/record.log.writer';
 import { RecordLogReader } from './record/record.log.reader';
 import * as path from 'path';
 import * as fs from 'fs';
 import { Record } from './record/record';
-import { Utils } from './utils';
+import { MetricsService } from './metrics.service';
+import { ConsoleLogger } from './console.logger';
 
 export class ProduceRecordParams {
   @IsNumber()
@@ -51,7 +50,6 @@ export class FetchRecordsParams {
 @Controller()
 export class AppController {
   private readonly baseDirectory: string = '/tmp/lks';
-  private readonly metricsFilePath = path.join(this.baseDirectory, 'metrics.csv');
   private readonly writers: RecordLogWriter[];
   private readonly readers: RecordLogReader[];
 
@@ -60,37 +58,121 @@ export class AppController {
     @Inject('LOG_COUNT') logCount: number,
     private readonly cache: RecordCache,
     private readonly controlPlaneService: ControlPlaneService,
+    private readonly metricsService: MetricsService,
+    private readonly logger: ConsoleLogger,
   ) {
     if (!fs.existsSync(this.baseDirectory)) {
       fs.mkdirSync(this.baseDirectory, { recursive: true });
     }
 
-    this.writers = Array.from({ length: logCount }, (_, i) => {
-      const logFilePath = path.join(this.baseDirectory, `${i}.log`);
+    this.readers = this.initializeReaders(logCount);
+    this.writers = this.initializeWriters(logCount, partitionCount);
+  }
 
-      const partitions: PartitionId[] = Array.from(
-        { length: partitionCount },
-        (_, idx) => idx, //  ← idx is a number
-      ).filter((p) => p % logCount === i);
+  @Post('produce/:partitionId')
+  @ApiResponse({
+    status: 200,
+  })
+  async produceRecord(
+    @Param() params: ProduceRecordParams,
+    @Body() input: ProduceRecordInput,
+    @Res() response: Response,
+  ): Promise<any> {
+    const start = Date.now();
+    const writer = this.getWriter(params.partitionId);
+    if (!writer) {
+      this.logger.error(`No record log writer found for partition: ${params.partitionId}`);
+      throw new PartitionNotFoundException();
+    }
 
-      const offsets: Map<PartitionId, Offset> = new Map();
-      for (const partition of partitions) {
-        const lastCommit = controlPlaneService.lastCommit(partition);
-        offsets.set(partition, lastCommit.offset);
-        console.log(
-          `[${new Date()}] Partition ${partition} starting at offset: ${lastCommit.offset}`,
-        );
-      }
-      return new RecordLogWriter(logFilePath, 0, offsets, controlPlaneService);
-    });
+    const offset: Offset = await writer.write(
+      params.partitionId,
+      input.key,
+      input.value,
+    );
+    this.metricsService.emit('api.produce', Date.now() - start);
+    response.json({ offset: offset.toString() });
+  }
 
-    this.readers = Array.from({ length: logCount }, (_, i) => {
+  @Get('fetch/:partitionId')
+  @ApiResponse({
+    status: 200,
+    type: [Record],
+  })
+  async fetchRecords(
+    @Param() params: FetchRecordsParams,
+    @Res() response: Response,
+  ): Promise<void> {
+    const start = Date.now();
+
+    this.logger.info(`[${params.partitionId}]: Querying records for partition.`);
+    const reader: RecordLogReader = this.getReader(params.partitionId);
+    if (!reader) {
+      this.logger.info(`[${params.partitionId}: Partition not found.`);
+      throw new PartitionNotFoundException();
+    }
+
+    const offset: Offset = this.cache.offset(params.partitionId);
+    this.logger.info(`[${params.partitionId}]: Querying records for partition.`);
+    this.logger.info(`[${params.partitionId}]: Last queried offset is: ${offset}`);
+    const position: FilePosition = this.controlPlaneService.findPosition(
+      params.partitionId,
+      offset,
+    );
+    const tail: Record[] = await reader.query(params.partitionId, position);
+    this.logger.info(`[${params.partitionId}]: Found ${tail.length} new records.`);
+
+    this.cache.insert(params.partitionId, tail);
+
+    // convert big int to string
+    const result: any[] = this.cache.get(params.partitionId).map((r) => ({
+      offset: r.getOffset().toString(),
+      key: r.getKey(),
+      value: r.getValue(),
+    }));
+    this.logger.info(`[${params.partitionId}]: Returning ${result.length} total records.`);
+
+    this.metricsService.emit('api.fetch', Date.now() - start);
+    this.metricsService.emit('fetch.count', result.length);
+    response.json(result);
+  }
+
+  /**
+   * Initialize readers.
+   * @param count 
+   * @returns 
+   */
+  private initializeReaders(shards: number): RecordLogReader[] {
+    return Array.from({ length: shards }, (_, i) => {
       const logFilePath = path.join(this.baseDirectory, `${i}.log`);
       return new RecordLogReader(logFilePath);
     });
+  }
 
-    fs.writeFileSync(this.metricsFilePath, "");
-    fs.writeFileSync(this.metricsFilePath, 'timestamp,metric,value\n');
+  /**
+   * Initialize writers.
+   * @param count 
+   * @param partitions 
+   * @returns 
+   */
+  private initializeWriters(shards: number, partitions: number): RecordLogWriter[] {
+    return Array.from({ length: shards }, (_, i) => {
+      const logFilePath = path.join(this.baseDirectory, `${i}.log`);
+
+      const partitionIds: PartitionId[] = Array.from(
+        { length: partitions },
+        (_, idx) => idx,
+      ).filter((p) => p % shards === i);
+
+      const offsets: Map<PartitionId, Offset> = new Map();
+      for (const partitionId of partitionIds) {
+        // queries the control plane service for the latest partition commit
+        const latestCommit = this.controlPlaneService.latestCommit(partitionId);
+        offsets.set(partitionId, latestCommit.offset);
+        this.logger.info(`Partition ${partitionId} starting at offset: ${latestCommit.offset}.`);
+      }
+      return new RecordLogWriter(logFilePath, 0, offsets, this.controlPlaneService);
+    });
   }
 
   /**
@@ -109,101 +191,5 @@ export class AppController {
    */
   private getWriter(partitionId: PartitionId): RecordLogWriter {
     return this.writers[partitionId % this.writers.length];
-  }
-
-  @Post('produce/:partitionId')
-  @ApiResponse({
-    status: 200,
-  })
-  async produceRecord(
-    @Param() params: ProduceRecordParams,
-    @Body() input: ProduceRecordInput,
-    @Res() response: Response,
-  ): Promise<any> {
-    const start = Date.now()
-    const writer = this.getWriter(params.partitionId);
-    if (!writer) {
-      console.log(
-        `No record log writer found for partition: ${params.partitionId}`,
-      );
-      throw new PartitionNotFoundException();
-    }
-
-    const offset: Offset = await writer.write(
-      params.partitionId,
-      input.key,
-      input.value,
-    );
-    const end = Date.now()
-    const latency = end - start;
-    Utils.emit("api.produce", latency);
-    response.json({ offset: offset.toString() });
-  }
-
-
-  @Get('fetch/:partitionId')
-  @ApiResponse({
-    status: 200,
-    type: [Record],
-  })
-  async fetchRecords(
-    @Param() params: FetchRecordsParams,
-    @Res() response: Response,
-  ): Promise<void> {
-    const apiStartTime = Date.now();
-
-    console.log(
-      `[${new Date()}] Querying records for partition: ${params.partitionId}`,
-    );
-    const reader: RecordLogReader = this.getReader(params.partitionId);
-    if (!reader) {
-      throw new PartitionNotFoundException();
-    }
-
-    const offset: Offset = this.cache.offset(params.partitionId);
-    console.log(
-      `[${new Date()}] For partition ${params.partitionId}, the latest queried offset is: ${offset}`,
-    );
-    const position: FilePosition = this.controlPlaneService.findPosition(
-      params.partitionId,
-      offset,
-    );
-    console.log(
-      `[${new Date()}] Query records for partition ${params.partitionId} starting at position: ${position}.`,
-    );
-    const queryStartTime = Date.now();
-    const tail: Record[] = await reader.query(params.partitionId, position);
-    const queryEndTime = Date.now();
-
-    const queryLatency = queryEndTime - queryStartTime;
-    console.log(
-      `[${new Date()}] Querying partition: ${params.partitionId} for ${tail.length} messages took ${queryLatency}ms.`,
-    );
-    console.log(
-      `[${new Date()}] Found ${tail.length} new records for partition: ${params.partitionId}`,
-    );
-    this.cache.insert(params.partitionId, tail);
-
-    // convert big int to string
-    const result: any[] = this.cache.get(params.partitionId).map((r) => ({
-      offset: r.getOffset().toString(),
-      key: r.getKey(),
-      value: r.getValue(),
-    }));
-    // const result: any[] = tail.map((r) => ({
-    //   offset: r.getOffset().toString(),
-    //   key: r.getKey(),
-    //   value: r.getValue(),
-    // }));
-    console.log(
-      `[${new Date()}] Returning ${result.length} records for partition: ${params.partitionId}.`,
-    );
-    const apiEndTime = Date.now();
-    const apiLatency = apiEndTime - apiStartTime;
-    console.log(
-      `[${new Date()}] Fetching all records for partition ${params.partitionId} took ${apiLatency}ms.`,
-    );
-    Utils.emit("api.fetch", apiLatency);
-    response.json(result);
   }
 }

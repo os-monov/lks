@@ -79,7 +79,7 @@ export class ControlPlaneService implements OnModuleInit, OnModuleDestroy {
           data,
           (_key, value) =>
             typeof value === 'bigint' ? value.toString() : value,
-          2, // Pretty print
+          2,
         ),
       );
     } catch (error) {
@@ -89,39 +89,45 @@ export class ControlPlaneService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Returns the last committed offset for a partition.
-   * @param partitionId
-   * @returns
+   * Returns the latest commit for a partition, or a default commit if none exists.
+   * @param partitionId The partition to get the latest commit for
+   * @returns The latest PartitionCommit
    */
-  public offset(partitionId: PartitionId): Offset {
+  public latestCommit(partitionId: PartitionId): PartitionCommit {
     const commits: PartitionCommit[] = this.commits.get(partitionId);
-    // if (commits.length === 0) {
-    //   return 1;
-    // }
-
-    return commits.at(commits.length - 1).offset;
-  }
-
-  public lastCommit(partitionId: PartitionId): PartitionCommit {
-    const commits: PartitionCommit[] = this.commits.get(partitionId);
-    if (commits.length === 0) {
+    if (!commits || commits.length === 0) {
       return { partitionId: partitionId, offset: 1n, position: 0 };
     }
     return commits.at(commits.length - 1);
   }
 
   /**
-   *
-   * @param commits
+   * Save new commits to the store and optionally persist to disk.
+   * @param commits The commits to save
+   * @param persist Whether to persist changes to disk (default: false)
    */
-  public async commit(commits: PartitionCommit[]): Promise<void> {
-    // ensure all commits are valid or throw exception
-    // validate that all commits are the expected ones and we don't have an older offset beating an earlier one
-    // write to disk to persist (db)
+  public async saveCommits(commits: PartitionCommit[], persist: boolean = false): Promise<void> {
+    // Validate commits (you could add more validation logic here)
     for (const commit of commits) {
-      this.commits.get(commit.partitionId).push(commit);
+      const existingCommits = this.commits.get(commit.partitionId);
+      if (!existingCommits) {
+        throw new Error(`Invalid partition ID: ${commit.partitionId}`);
+      }
+
+      // Optional: Add validation that new commits have higher offsets than previous ones
+      if (existingCommits.length > 0) {
+        const latestOffset = existingCommits[existingCommits.length - 1].offset;
+        if (commit.offset <= latestOffset) {
+          throw new Error(`New commit offset (${commit.offset}) must be greater than latest offset (${latestOffset})`);
+        }
+      }
+
+      existingCommits.push(commit);
     }
-    // this.save();
+
+    if (persist) {
+      this.save();
+    }
   }
 
   /**

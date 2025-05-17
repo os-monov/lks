@@ -2,7 +2,7 @@ import * as path from 'path';
 import { RecordLogReader } from '../../src/record/record.log.reader';
 import { Record } from '../../src/record/record';
 
-describe('RecordLogReader.scan', () => {
+describe('RecordLogReader', () => {
   const LOG_PATH = path.resolve(__dirname, '../data/sample.log');
 
   let reader: RecordLogReader;
