@@ -73,7 +73,15 @@ export class ControlPlaneService implements OnModuleInit, OnModuleDestroy {
   private save(): void {
     try {
       const data = Object.fromEntries(this.commits);
-      fs.writeFileSync(this.metadataFilePath, JSON.stringify(data, null, 2));
+      fs.writeFileSync(
+        this.metadataFilePath,
+        JSON.stringify(
+          data,
+          (_key, value) =>
+            typeof value === 'bigint' ? value.toString() : value,
+          2, // Pretty print
+        ),
+      );
     } catch (error) {
       console.log('Failed to save control plane metadata as a file.');
       console.log(error);
@@ -110,10 +118,10 @@ export class ControlPlaneService implements OnModuleInit, OnModuleDestroy {
     // ensure all commits are valid or throw exception
     // validate that all commits are the expected ones and we don't have an older offset beating an earlier one
     // write to disk to persist (db)
-    // for (const commit of commits) {
-    //   this.commits.get(commit.partitionId).push(commit);
-    // }
-    // this.save();
+    for (const commit of commits) {
+      this.commits.get(commit.partitionId).push(commit);
+    }
+    this.save();
   }
 
   /**

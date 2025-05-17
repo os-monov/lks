@@ -1,10 +1,18 @@
-import { Body, Controller, Inject, Param, Post, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Inject,
+  Param,
+  Post,
+  Res,
+} from '@nestjs/common';
 import { IsNumber, IsString, Max, Min } from 'class-validator';
 import { ApiResponse } from '@nestjs/swagger';
 import { Response } from 'express';
 import { Type } from 'class-transformer';
 import { PartitionNotFoundException } from './exceptions';
-import { Offset, PartitionId } from './segment/types';
+import { FilePosition, Offset, PartitionId } from './segment/types';
 import { RecordCache } from './record/record.cache';
 import { ControlPlaneService } from './control.plane.service';
 import {
@@ -14,6 +22,7 @@ import {
 import { RecordLogReader } from './record/record.log.reader';
 import * as path from 'path';
 import * as fs from 'fs';
+import { Record } from './record/record';
 
 export class ProduceRecordParams {
   @IsNumber()
@@ -65,16 +74,18 @@ export class AppController {
 
       const offsets: Map<PartitionId, Offset> = new Map();
       for (const partition of partitions) {
-        const lastCommit = this.controlPlaneService.lastCommit(partition);
+        const lastCommit = controlPlaneService.lastCommit(partition);
         offsets.set(partition, lastCommit.offset);
+        console.log(
+          `[${new Date()}] Partition ${partition} starting at offset: ${lastCommit.offset}`,
+        );
       }
-      const config: RecordLogWriterConfiguration = {
-        logFilePath: logFilePath,
-        offsets: offsets,
-        position: 0,
-        onCommit: controlPlaneService.commit,
-      };
-      return new RecordLogWriter(config);
+      return new RecordLogWriter(logFilePath, 0, offsets, controlPlaneService);
+    });
+
+    this.readers = Array.from({ length: logCount }, (_, i) => {
+      const logFilePath = path.join(this.baseDirectory, `${i}.log`);
+      return new RecordLogReader(logFilePath);
     });
   }
 
@@ -121,31 +132,50 @@ export class AppController {
     response.json({ offset: offset.toString() });
   }
 
-  // @Get('fetch/:partitionId')
-  // @ApiResponse({
-  //   status: 200,
-  //   type: [Record],
-  // })
-  // async fetchRecords(
-  //   @Param() params: FetchRecordsParams,
-  //   @Res() response: Response,
-  // ): Promise<void> {
-  //   const log: RecordLog = this.manager.getLog(params.partitionId);
-  //   if (!log) {
-  //     throw new PartitionNotFoundException();
-  //   }
+  @Get('fetch/:partitionId')
+  @ApiResponse({
+    status: 200,
+    type: [Record],
+  })
+  async fetchRecords(
+    @Param() params: FetchRecordsParams,
+    @Res() response: Response,
+  ): Promise<void> {
+    console.log(
+      `[${new Date()}] Querying records for partition: ${params.partitionId}`,
+    );
+    const reader: RecordLogReader = this.getReader(params.partitionId);
+    if (!reader) {
+      throw new PartitionNotFoundException();
+    }
 
-  //   const offset: Offset = this.cache.offset(params.partitionId);
-  //   const position: FilePosition = this.controlPlaneService.findPosition(
-  //     params.partitionId,
-  //     offset,
-  //   );
-  //   const tail: Record[] = await log.query(params.partitionId, position);
+    const offset: Offset = this.cache.offset(params.partitionId);
+    console.log(
+      `[${new Date()}] For partition ${params.partitionId}, the latest queried offset is: ${offset}`,
+    );
+    const position: FilePosition = this.controlPlaneService.findPosition(
+      params.partitionId,
+      offset,
+    );
+    console.log(
+      `[${new Date()}] Query records for partition ${params.partitionId} starting at position: ${position}.`,
+    );
+    const tail: Record[] = await reader.query(params.partitionId, position);
 
-  //   this.cache.insert(params.partitionId, tail);
+    console.log(
+      `[${new Date()}] Found ${tail.length} new records for partition: ${params.partitionId}`,
+    );
+    this.cache.insert(params.partitionId, tail);
 
-  //   const result: Record[] = this.cache.get(params.partitionId);
-
-  //   response.json(result);
-  // }
+    // convert big int to string
+    const result: any[] = this.cache.get(params.partitionId).map((r) => ({
+      offset: r.getOffset().toString(),
+      key: r.getKey(),
+      value: r.getValue(),
+    }));
+    console.log(
+      `[${new Date()}] Returning ${result.length} records for partition: ${params.partitionId}`,
+    );
+    response.json(result);
+  }
 }

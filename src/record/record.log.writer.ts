@@ -11,12 +11,12 @@ import { Subject } from 'rxjs';
 import { bufferTime } from 'rxjs';
 import { groupBy } from 'lodash';
 import { PartitionSegment } from 'src/segment/partition.segment';
+import { ControlPlaneService } from 'src/control.plane.service';
 
 export interface RecordLogWriterConfiguration {
   logFilePath: string;
   position: FilePosition;
   offsets: Map<PartitionId, Offset>;
-  onCommit: (commits: PartitionCommit[]) => void;
 }
 
 /**
@@ -25,21 +25,20 @@ export interface RecordLogWriterConfiguration {
 export class RecordLogWriter {
   private static readonly BATCH_DURATION_MS = 250;
   private bufferSubject = new Subject<BufferRecord>();
-  private readonly logFilePath: string;
-  private position: FilePosition;
   private readonly offsets: Map<PartitionId, Offset>;
-  private readonly onCommit: (commits: PartitionCommit[]) => void;
 
-  constructor(config: RecordLogWriterConfiguration) {
-    this.logFilePath = config.logFilePath;
-    this.position = config.position;
-    this.offsets = new Map(config.offsets);
-    this.onCommit = config.onCommit;
+  constructor(
+    private readonly logFilePath: string,
+    private position: FilePosition,
+    offsets: Map<PartitionId, Offset>,
+    private readonly controlPlaneService: ControlPlaneService,
+  ) {
+    this.offsets = new Map(offsets);
 
-    // if (!fs.existsSync(this.logFilePath)) {
-    fs.writeFileSync(this.logFilePath, '');
-    // console.log(`Created log file: ${this.logFilePath}`);
-    // }
+    if (!fs.existsSync(this.logFilePath)) {
+      fs.writeFileSync(this.logFilePath, '');
+      console.log(`Created log file: ${this.logFilePath}`);
+    }
 
     /* Initialize the buffer subject */
     this.bufferSubject
@@ -120,7 +119,7 @@ export class RecordLogWriter {
         this.position += segmentBuffer.length;
       }
 
-      this.onCommit(commits);
+      this.controlPlaneService.commit(commits);
       console.log(
         `[${new Date()}] Committed ${commits.length} partitions to ${this.logFilePath}.`,
       );
