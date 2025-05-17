@@ -81,7 +81,9 @@ export class AppController {
     const start = Date.now();
     const writer = this.getWriter(params.partitionId);
     if (!writer) {
-      this.logger.error(`No record log writer found for partition: ${params.partitionId}`);
+      this.logger.error(
+        `No record log writer found for partition: ${params.partitionId}`,
+      );
       throw new PartitionNotFoundException();
     }
 
@@ -105,7 +107,9 @@ export class AppController {
   ): Promise<void> {
     const start = Date.now();
 
-    this.logger.info(`[${params.partitionId}]: Querying records for partition.`);
+    this.logger.info(
+      `[${params.partitionId}]: Querying records for partition.`,
+    );
     const reader: RecordLogReader = this.getReader(params.partitionId);
     if (!reader) {
       this.logger.info(`[${params.partitionId}: Partition not found.`);
@@ -113,14 +117,20 @@ export class AppController {
     }
 
     const offset: Offset = this.cache.offset(params.partitionId);
-    this.logger.info(`[${params.partitionId}]: Querying records for partition.`);
-    this.logger.info(`[${params.partitionId}]: Last queried offset is: ${offset}`);
+    this.logger.info(
+      `[${params.partitionId}]: Querying records for partition.`,
+    );
+    this.logger.info(
+      `[${params.partitionId}]: Last queried offset is: ${offset}`,
+    );
     const position: FilePosition = this.controlPlaneService.findPosition(
       params.partitionId,
       offset,
     );
     const tail: Record[] = await reader.query(params.partitionId, position);
-    this.logger.info(`[${params.partitionId}]: Found ${tail.length} new records.`);
+    this.logger.info(
+      `[${params.partitionId}]: Found ${tail.length} new records.`,
+    );
 
     this.cache.insert(params.partitionId, tail);
 
@@ -130,7 +140,9 @@ export class AppController {
       key: r.getKey(),
       value: r.getValue(),
     }));
-    this.logger.info(`[${params.partitionId}]: Returning ${result.length} total records.`);
+    this.logger.info(
+      `[${params.partitionId}]: Returning ${result.length} total records.`,
+    );
 
     this.metricsService.emit('api.fetch', Date.now() - start);
     this.metricsService.emit('fetch.count', result.length);
@@ -139,23 +151,26 @@ export class AppController {
 
   /**
    * Initialize readers.
-   * @param count 
-   * @returns 
+   * @param count
+   * @returns
    */
   private initializeReaders(shards: number): RecordLogReader[] {
     return Array.from({ length: shards }, (_, i) => {
       const logFilePath = path.join(this.baseDirectory, `${i}.log`);
-      return new RecordLogReader(logFilePath);
+      return new RecordLogReader(logFilePath, this.metricsService, this.logger);
     });
   }
 
   /**
    * Initialize writers.
-   * @param count 
-   * @param partitions 
-   * @returns 
+   * @param count
+   * @param partitions
+   * @returns
    */
-  private initializeWriters(shards: number, partitions: number): RecordLogWriter[] {
+  private initializeWriters(
+    shards: number,
+    partitions: number,
+  ): RecordLogWriter[] {
     return Array.from({ length: shards }, (_, i) => {
       const logFilePath = path.join(this.baseDirectory, `${i}.log`);
 
@@ -169,9 +184,18 @@ export class AppController {
         // queries the control plane service for the latest partition commit
         const latestCommit = this.controlPlaneService.latestCommit(partitionId);
         offsets.set(partitionId, latestCommit.offset);
-        this.logger.info(`Partition ${partitionId} starting at offset: ${latestCommit.offset}.`);
+        this.logger.info(
+          `Partition ${partitionId} starting at offset: ${latestCommit.offset}.`,
+        );
       }
-      return new RecordLogWriter(logFilePath, 0, offsets, this.controlPlaneService);
+      return new RecordLogWriter(
+        logFilePath,
+        0,
+        offsets,
+        this.controlPlaneService,
+        this.metricsService,
+        this.logger,
+      );
     });
   }
 

@@ -1,14 +1,28 @@
 import * as path from 'path';
 import { RecordLogReader } from '../../src/record/record.log.reader';
 import { Record } from '../../src/record/record';
+import { MetricsService } from '../../src/metrics.service';
+import { ConsoleLogger } from '../../src/console.logger';
 
 describe('RecordLogReader', () => {
   const LOG_PATH = path.resolve(__dirname, '../data/sample.log');
 
   let reader: RecordLogReader;
+  let mockMetricsService: MetricsService;
+  let mockLogger: ConsoleLogger;
 
   beforeAll(() => {
-    reader = new RecordLogReader(LOG_PATH);
+    // Create mocks
+    mockMetricsService = {
+      emit: jest.fn(),
+    } as unknown as MetricsService;
+
+    mockLogger = {
+      info: jest.fn(),
+      error: jest.fn(),
+    } as unknown as ConsoleLogger;
+
+    reader = new RecordLogReader(LOG_PATH, mockMetricsService, mockLogger);
   });
 
   describe('query', () => {

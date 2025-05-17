@@ -64,28 +64,31 @@ export class ControlPlaneService implements OnModuleInit, OnModuleDestroy {
    * Save before shutting down.
    */
   onModuleDestroy() {
-    this.save();
+    this.saveToFile();
   }
 
   /**
-   * Save metadata as a file.
+   * Save pending commits as NDJSON in an append-only file.
    */
-  private save(): void {
-    try {
-      const data = Object.fromEntries(this.commits);
-      fs.writeFileSync(
-        this.metadataFilePath,
-        JSON.stringify(
-          data,
-          (_key, value) =>
-            typeof value === 'bigint' ? value.toString() : value,
-          2,
-        ),
-      );
-    } catch (error) {
-      console.log('Failed to save control plane metadata as a file.');
-      console.log(error);
-    }
+  private saveToFile(): void {
+    // if (this.pendingCommits.length === 0) {
+    //   return;
+    // }
+    // try {
+    //   const fd = fs.openSync(this.metadataFilePath, 'a');
+    //   for (const commit of this.pendingCommits) {
+    //     const line = JSON.stringify(
+    //       commit,
+    //       (_key, value) => typeof value === 'bigint' ? value.toString() : value
+    //     ) + '\n';
+    //     fs.writeSync(fd, line);
+    //   }
+    //   fs.closeSync(fd);
+    //   this.pendingCommits = [];
+    // } catch (error) {
+    //   console.log('Failed to save control plane metadata as a file.');
+    //   console.log(error);
+    // }
   }
 
   /**
@@ -106,7 +109,10 @@ export class ControlPlaneService implements OnModuleInit, OnModuleDestroy {
    * @param commits The commits to save
    * @param persist Whether to persist changes to disk (default: false)
    */
-  public async saveCommits(commits: PartitionCommit[], persist: boolean = false): Promise<void> {
+  public async saveCommits(
+    commits: PartitionCommit[],
+    persist: boolean = false,
+  ): Promise<void> {
     // Validate commits (you could add more validation logic here)
     for (const commit of commits) {
       const existingCommits = this.commits.get(commit.partitionId);
@@ -118,7 +124,9 @@ export class ControlPlaneService implements OnModuleInit, OnModuleDestroy {
       if (existingCommits.length > 0) {
         const latestOffset = existingCommits[existingCommits.length - 1].offset;
         if (commit.offset <= latestOffset) {
-          throw new Error(`New commit offset (${commit.offset}) must be greater than latest offset (${latestOffset})`);
+          throw new Error(
+            `New commit offset (${commit.offset}) must be greater than latest offset (${latestOffset})`,
+          );
         }
       }
 
@@ -126,7 +134,7 @@ export class ControlPlaneService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (persist) {
-      this.save();
+      // this.save();
     }
   }
 

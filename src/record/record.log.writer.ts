@@ -12,7 +12,8 @@ import { bufferTime } from 'rxjs';
 import { groupBy } from 'lodash';
 import { PartitionSegment } from 'src/segment/partition.segment';
 import { ControlPlaneService } from 'src/control.plane.service';
-import { Utils } from 'src/utils';
+import { MetricsService } from 'src/metrics.service';
+import { ConsoleLogger } from 'src/console.logger';
 
 export interface RecordLogWriterConfiguration {
   logFilePath: string;
@@ -21,7 +22,7 @@ export interface RecordLogWriterConfiguration {
 }
 
 /**
- * Responsible for btaching records and then saving them to a file.
+ * Responsible for batching records and then saving them to a file.
  */
 export class RecordLogWriter {
   private static readonly BATCH_DURATION_MS = 250;
@@ -33,12 +34,14 @@ export class RecordLogWriter {
     private position: FilePosition,
     offsets: Map<PartitionId, Offset>,
     private readonly controlPlaneService: ControlPlaneService,
+    private readonly metricsService: MetricsService,
+    private readonly logger: ConsoleLogger,
   ) {
     this.offsets = new Map(offsets);
 
     if (!fs.existsSync(this.logFilePath)) {
       fs.writeFileSync(this.logFilePath, '');
-      console.log(`Created log file: ${this.logFilePath}`);
+      this.logger.info(`[Writer @ ${this.logFilePath}] Created new log file.`);
     }
 
     /* Initialize the buffer subject */
@@ -63,10 +66,9 @@ export class RecordLogWriter {
     key: string,
     value: string,
   ): Promise<Offset> {
-    const start = Date.now();
     if (!this.offsets.has(partitionId)) {
-      console.log(
-        `InternalServiceException: Offset not found for partition: ${partitionId}`,
+      this.logger.error(
+        `InternalServiceException: Offset not found for partition: ${partitionId}.`,
       );
       throw new InternalServerException();
     }
@@ -76,8 +78,6 @@ export class RecordLogWriter {
     const bufferRecord = new BufferRecord(partitionId, offset, key, value);
     this.bufferSubject.next(bufferRecord);
 
-    const end = Date.now();
-    Utils.emit('writer.write', end - start);
     return bufferRecord.promise;
   }
 
@@ -86,10 +86,11 @@ export class RecordLogWriter {
    * @param records
    */
   private async flush(records: BufferRecord[]): Promise<void> {
-    const start = Date.now();
-    console.log(
-      `[${new Date()}] Flushing ${records.length} records to ${this.logFilePath}.`,
+    const flushStart = Date.now();
+    this.logger.info(
+      `[Writer @ ${this.logFilePath}] Flushing ${records.length} records to file.`,
     );
+
     try {
       const recordsByPartition: Record<PartitionId, BufferRecord[]> = groupBy(
         records,
@@ -127,26 +128,27 @@ export class RecordLogWriter {
       if (buffers.length > 0) {
         const concatenated = Buffer.concat(buffers);
 
-        const start = Date.now();
+        const syncStart = Date.now();
         fs.appendFileSync(this.logFilePath, concatenated);
         const end = Date.now();
-        Utils.emit('writer.flush.append', end - start);
-        Utils.emit('record.count', records.length);
-        Utils.emit('buffer.size', concatenated.length);
+        this.metricsService.emit('writer.flush.sync', Date.now() - syncStart);
+        this.metricsService.emit('writer.record.count', records.length);
+        this.metricsService.emit('writer.buffer.size', concatenated.length);
       }
 
-      this.controlPlaneService.commit(commits);
-      console.log(
-        `[${new Date()}] Committed ${commits.length} partitions to ${this.logFilePath}.`,
+      this.controlPlaneService.saveCommits(commits);
+      this.logger.info(
+        `[Writer @ ${this.logFilePath}] Commited ${commits.length} partitions to ControlPlaneService.`,
       );
 
       records.forEach((record) => record.resolve(record.getOffset()));
     } catch (error) {
-      console.log(error);
+      this.logger.error(error);
       records.forEach((record) => record.reject(new InternalServerException()));
-      console.error(`Error flushing records for ${this.logFilePath}`);
+      this.logger.info(
+        `[Writer @ ${this.logFilePath}] Error flushing records.`,
+      );
     }
-    const end = Date.now();
-    Utils.emit('writer.flush', end - start);
+    this.metricsService.emit('writer.flush', Date.now() - flushStart);
   }
 }

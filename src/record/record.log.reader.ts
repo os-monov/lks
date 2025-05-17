@@ -2,10 +2,16 @@ import { promises as fs } from 'fs';
 import { FilePosition, PartitionId } from '../segment/types';
 import { Record } from './record';
 import { PartitionSegmentHeader } from '../segment/partition.segment.header';
-import { PartitionSegmentPayloadItem } from '../segment/partition.segment.payload.item';
+import { PartitionSegment } from '../segment/partition.segment';
+import { ConsoleLogger } from 'src/console.logger';
+import { MetricsService } from 'src/metrics.service';
 
 export class RecordLogReader {
-  constructor(private readonly logFilePath: string) {}
+  constructor(
+    private readonly logFilePath: string,
+    private readonly metricsService: MetricsService,
+    private readonly logger: ConsoleLogger,
+  ) {}
 
   /**
    * Query the log file for the relevant records from the provided start position.
@@ -16,15 +22,16 @@ export class RecordLogReader {
     partitionId: PartitionId,
     position: FilePosition,
   ): Promise<Record[]> {
-    console.log(
-      `[${new Date()}] Querying ${this.logFilePath} for partition: ${partitionId} starting at position: ${position}.`,
+    const start = Date.now();
+    this.logger.info(
+      `[Reader @ ${this.logFilePath}] Querying partition ${partitionId} from position: ${position}.`,
     );
-    const results: Record[] = [];
 
+    const results: Record[] = [];
     const file = await fs.open(this.logFilePath, 'r');
     const stats = await file.stat();
-    console.log(
-      `[${new Date()}] Size of ${this.logFilePath} is ${stats.size} bytes.`,
+    this.logger.info(
+      `[Reader @ ${this.logFilePath}] Log file is ${stats.size} bytes.`,
     );
 
     if (stats.size == 0) {
@@ -32,12 +39,12 @@ export class RecordLogReader {
       return results;
     }
 
-    const magicBuf = Buffer.alloc(4);
+    const magicBuffer = Buffer.alloc(4);
     let currentPosition: FilePosition = position;
 
     while (currentPosition + PartitionSegmentHeader.SIZE <= stats.size) {
-      await file.read(magicBuf, 0, 4, currentPosition);
-      if (magicBuf.readUInt32BE(0) === PartitionSegmentHeader.MAGIC) {
+      await file.read(magicBuffer, 0, 4, currentPosition);
+      if (magicBuffer.readUInt32BE(0) === PartitionSegmentHeader.MAGIC) {
         break;
       }
       currentPosition += 1;
@@ -59,47 +66,25 @@ export class RecordLogReader {
       const header = PartitionSegmentHeader.from(headerBuffer);
 
       if (header.getPartitionId() === partitionId) {
-        const payloadLength = header.getPayloadSize();
-        const payloadBuffer = Buffer.alloc(payloadLength);
-        await file.read(
-          payloadBuffer,
-          0,
-          payloadLength,
-          currentPosition + PartitionSegmentHeader.SIZE,
-        );
+        const segmentSize =
+          PartitionSegmentHeader.SIZE + header.getPayloadSize();
+        const segmentBuffer = Buffer.alloc(segmentSize);
 
-        let payloadPosition = 0;
-        let offset = header.getOffset();
+        // read into segment buffer
+        await file.read(segmentBuffer, 0, segmentSize, currentPosition);
 
-        while (payloadPosition < payloadLength) {
-          const keyLength = payloadBuffer.readUInt32BE(payloadPosition);
-          payloadPosition += PartitionSegmentPayloadItem.LENGTH_SIZE;
+        // create partition segment
+        const segment = PartitionSegment.from(segmentBuffer);
 
-          const key = payloadBuffer.toString(
-            'utf8',
-            payloadPosition,
-            payloadPosition + keyLength,
-          );
-          payloadPosition += keyLength;
-
-          const valueLength = payloadBuffer.readUInt32BE(payloadPosition);
-          payloadPosition += PartitionSegmentPayloadItem.LENGTH_SIZE;
-
-          const value = payloadBuffer.toString(
-            'utf8',
-            payloadPosition,
-            payloadPosition + valueLength,
-          );
-          payloadPosition += valueLength;
-
-          results.push(new Record(offset, key, value));
-          offset += 1n;
-        }
+        // append results
+        results.push(...segment.getRecords());
       }
 
       currentPosition += PartitionSegmentHeader.SIZE + header.getPayloadSize();
     }
 
+    this.metricsService.emit('reader.query', Date.now() - start);
+    this.metricsService.emit('reader.count', results.length);
     await file.close();
     return results;
   }
