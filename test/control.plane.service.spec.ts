@@ -1,11 +1,22 @@
 import { ControlPlaneService } from '../src/control.plane.service';
+import { ConsoleLogger } from '../src/console.logger';
 
 describe('ControlPlaneService', () => {
   let service: ControlPlaneService;
 
   beforeEach(() => {
-    // Provide a dummy file path and partition count
-    service = new ControlPlaneService('/tmp/non-existent.ndjson', 3);
+    // Create a mock logger
+    const mockLogger = {
+      info: jest.fn(),
+      error: jest.fn(),
+    } as unknown as ConsoleLogger;
+
+    // Provide a dummy file path, partition count, and logger
+    service = new ControlPlaneService(
+      '/tmp/non-existent.ndjson',
+      3,
+      mockLogger,
+    );
   });
 
   function setCommits(

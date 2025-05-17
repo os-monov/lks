@@ -130,7 +130,6 @@ export class RecordLogWriter {
 
         const syncStart = Date.now();
         fs.appendFileSync(this.logFilePath, concatenated);
-        const end = Date.now();
         this.metricsService.emit('writer.flush.sync', Date.now() - syncStart);
         this.metricsService.emit('writer.record.count', records.length);
         this.metricsService.emit('writer.buffer.size', concatenated.length);

@@ -1,4 +1,3 @@
-import { OnModuleInit } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
@@ -8,19 +7,16 @@ import {
   PartitionId,
 } from './segment/types';
 import { InternalServerException } from './exceptions';
+import { ConsoleLogger } from './console.logger';
 
-export class ControlPlaneService implements OnModuleInit {
+export class ControlPlaneService {
   private readonly commits: Map<PartitionId, PartitionCommit[]> = new Map();
 
   constructor(
     private readonly metadataFilePath: string,
     private readonly partitionCount: number,
-  ) {}
-
-  /**
-   * Load metadata from file.
-   */
-  onModuleInit() {
+    private readonly logger: ConsoleLogger,
+  ) {
     const dir = path.dirname(this.metadataFilePath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
@@ -42,7 +38,6 @@ export class ControlPlaneService implements OnModuleInit {
         .filter(Boolean);
       for (const line of lines) {
         try {
-          // All offsets persisted as strings, restore to BigInt
           const parsed = JSON.parse(line) as any;
           const commit: PartitionCommit = {
             partitionId: parsed.partitionId,
@@ -87,11 +82,18 @@ export class ControlPlaneService implements OnModuleInit {
     for (const commit of commits) {
       const existingCommits = this.commits.get(commit.partitionId);
       if (!existingCommits) {
+        this.logger.error(
+          `[ControlPlaneService] Found 0 existing commits for partition: ${commit.partitionId}`,
+        );
         throw new InternalServerException();
       }
+      this.logger.info(
+        `[ControlPlaneService] Found ${existingCommits.length} commits for partition: ${commit.partitionId}`,
+      );
       if (existingCommits.length > 0) {
         const latestOffset = existingCommits[existingCommits.length - 1].offset;
         if (commit.offset <= latestOffset) {
+          console.log('there');
           throw new InternalServerException(
             `New commit offset (${commit.offset}) must be greater than latest offset (${latestOffset})`,
           );
@@ -110,7 +112,7 @@ export class ControlPlaneService implements OnModuleInit {
   public latestCommit(partitionId: PartitionId): PartitionCommit {
     const commits = this.commits.get(partitionId) ?? [];
     if (commits.length === 0) {
-      return { partitionId, offset: 1n, position: 0 };
+      return { partitionId, offset: 0n, position: 0 };
     }
     return commits[commits.length - 1];
   }

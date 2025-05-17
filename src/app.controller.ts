@@ -69,6 +69,7 @@ export class AppController {
     this.controlPlaneService = new ControlPlaneService(
       metadataFilePath,
       partitionCount,
+      logger,
     );
     this.readers = this.initializeReaders(logCount);
     this.writers = this.initializeWriters(logCount, partitionCount);
@@ -80,7 +81,7 @@ export class AppController {
   })
   async produceRecord(
     @Param() params: ProduceRecordParams,
-    @Body() input: ProduceRecordInput,
+    @Body() input: any,
     @Res() response: Response,
   ): Promise<any> {
     const start = Date.now();
@@ -92,11 +93,9 @@ export class AppController {
       throw new PartitionNotFoundException();
     }
 
-    const offset: Offset = await writer.write(
-      params.partitionId,
-      input.key,
-      input.value,
-    );
+    const [key, value] = input.data.split(':');
+    console.log(key, value);
+    const offset: Offset = await writer.write(params.partitionId, key, value);
     this.metricsService.emit('api.produce', Date.now() - start);
     response.json({ offset: offset.toString() });
   }
@@ -188,9 +187,11 @@ export class AppController {
       for (const partitionId of partitionIds) {
         // queries the control plane service for the latest partition commit
         const latestCommit = this.controlPlaneService.latestCommit(partitionId);
-        offsets.set(partitionId, latestCommit.offset);
+        // increment offset by 1 from last COMMITTED offset
+        const startOffset = latestCommit.offset + 1n;
+        offsets.set(partitionId, startOffset);
         this.logger.info(
-          `[Writer @ ${logFilePath}] Partition ${partitionId} is currently at offset: ${latestCommit.offset}.`,
+          `[Writer @ ${logFilePath}] Partition ${partitionId} is currently at offset: ${startOffset}.`,
         );
       }
       return new RecordLogWriter(

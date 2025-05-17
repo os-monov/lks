@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { ControlPlaneService } from './control.plane.service';
 import { AppController } from './app.controller';
 import { RecordCache } from './record/record.cache';
 import { ConfigModule } from '@nestjs/config';
@@ -14,7 +13,6 @@ import { ConsoleLogger } from './console.logger';
   ],
   controllers: [AppController],
   providers: [
-    ControlPlaneService,
     RecordCache,
     ConsoleLogger,
     MetricsService,
