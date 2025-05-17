@@ -1,9 +1,4 @@
-import {
-  Inject,
-  Injectable,
-  OnModuleDestroy,
-  OnModuleInit,
-} from '@nestjs/common';
+import { OnModuleInit } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
@@ -12,19 +7,26 @@ import {
   PartitionCommit,
   PartitionId,
 } from './segment/types';
+import { InternalServerException } from './exceptions';
 
-@Injectable()
-export class ControlPlaneService implements OnModuleInit, OnModuleDestroy {
+export class ControlPlaneService implements OnModuleInit {
   private readonly commits: Map<PartitionId, PartitionCommit[]> = new Map();
-  private readonly dataDir = `/tmp/lks`;
-  private readonly metadataFilePath: string = path.join(
-    this.dataDir,
-    'metadata.json',
-  );
 
   constructor(
-    @Inject('PARTITION_COUNT') private readonly partitionCount: number,
-  ) {
+    private readonly metadataFilePath: string,
+    private readonly partitionCount: number,
+  ) {}
+
+  /**
+   * Load metadata from file.
+   */
+  onModuleInit() {
+    const dir = path.dirname(this.metadataFilePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    this.commits.clear();
     for (
       let partitionId = 0;
       partitionId < this.partitionCount;
@@ -32,63 +34,72 @@ export class ControlPlaneService implements OnModuleInit, OnModuleDestroy {
     ) {
       this.commits.set(partitionId, []);
     }
-  }
-
-  /**
-   * Load metadata from file.
-   */
-  onModuleInit() {
-    if (!fs.existsSync(this.dataDir)) {
-      fs.mkdirSync(this.dataDir, { recursive: true });
-    }
 
     if (fs.existsSync(this.metadataFilePath)) {
-      try {
-        const data = JSON.parse(fs.readFileSync(this.metadataFilePath, 'utf8'));
-        this.commits.clear();
+      const lines = fs
+        .readFileSync(this.metadataFilePath, 'utf8')
+        .split('\n')
+        .filter(Boolean);
+      for (const line of lines) {
+        try {
+          // All offsets persisted as strings, restore to BigInt
+          const parsed = JSON.parse(line) as any;
+          const commit: PartitionCommit = {
+            partitionId: parsed.partitionId,
+            position: parsed.position,
+            offset: BigInt(parsed.offset),
+          };
 
-        for (const [partitionIdStr, commits] of Object.entries(data)) {
-          this.commits.set(
-            parseInt(partitionIdStr),
-            commits as PartitionCommit[],
-          );
+          const curr = this.commits.get(commit.partitionId);
+          if (!curr) throw new InternalServerException();
+          curr.push(commit);
+        } catch (err) {
+          console.log('Corrupt commit line in metadata:', line, err);
         }
-      } catch (error) {
-        console.log('Failed to load control plane metadata as a file.');
-        console.log(error);
       }
     }
   }
 
   /**
-   * Save before shutting down.
+   * Synchronously save each commit as a JSON line.
    */
-  onModuleDestroy() {
-    this.saveToFile();
+  private saveToFile(commits: PartitionCommit[]): void {
+    // Convert BigInt offset to string for JSON
+    const lines = commits
+      .map(
+        (commit) =>
+          JSON.stringify({
+            ...commit,
+            offset: commit.offset.toString(),
+          }) + '\n',
+      )
+      .join('');
+
+    // Append synchronously for durability
+    fs.appendFileSync(this.metadataFilePath, lines, { encoding: 'utf8' });
   }
 
   /**
-   * Save pending commits as NDJSON in an append-only file.
+   * Save new commits in-memory and then to file.
+   * @param commits
    */
-  private saveToFile(): void {
-    // if (this.pendingCommits.length === 0) {
-    //   return;
-    // }
-    // try {
-    //   const fd = fs.openSync(this.metadataFilePath, 'a');
-    //   for (const commit of this.pendingCommits) {
-    //     const line = JSON.stringify(
-    //       commit,
-    //       (_key, value) => typeof value === 'bigint' ? value.toString() : value
-    //     ) + '\n';
-    //     fs.writeSync(fd, line);
-    //   }
-    //   fs.closeSync(fd);
-    //   this.pendingCommits = [];
-    // } catch (error) {
-    //   console.log('Failed to save control plane metadata as a file.');
-    //   console.log(error);
-    // }
+  public async saveCommits(commits: PartitionCommit[]): Promise<void> {
+    for (const commit of commits) {
+      const existingCommits = this.commits.get(commit.partitionId);
+      if (!existingCommits) {
+        throw new InternalServerException();
+      }
+      if (existingCommits.length > 0) {
+        const latestOffset = existingCommits[existingCommits.length - 1].offset;
+        if (commit.offset <= latestOffset) {
+          throw new InternalServerException(
+            `New commit offset (${commit.offset}) must be greater than latest offset (${latestOffset})`,
+          );
+        }
+      }
+      existingCommits.push(commit);
+    }
+    this.saveToFile(commits);
   }
 
   /**
@@ -97,45 +108,11 @@ export class ControlPlaneService implements OnModuleInit, OnModuleDestroy {
    * @returns The latest PartitionCommit
    */
   public latestCommit(partitionId: PartitionId): PartitionCommit {
-    const commits: PartitionCommit[] = this.commits.get(partitionId);
-    if (!commits || commits.length === 0) {
-      return { partitionId: partitionId, offset: 1n, position: 0 };
+    const commits = this.commits.get(partitionId) ?? [];
+    if (commits.length === 0) {
+      return { partitionId, offset: 1n, position: 0 };
     }
-    return commits.at(commits.length - 1);
-  }
-
-  /**
-   * Save new commits to the store and optionally persist to disk.
-   * @param commits The commits to save
-   * @param persist Whether to persist changes to disk (default: false)
-   */
-  public async saveCommits(
-    commits: PartitionCommit[],
-    persist: boolean = false,
-  ): Promise<void> {
-    // Validate commits (you could add more validation logic here)
-    for (const commit of commits) {
-      const existingCommits = this.commits.get(commit.partitionId);
-      if (!existingCommits) {
-        throw new Error(`Invalid partition ID: ${commit.partitionId}`);
-      }
-
-      // Optional: Add validation that new commits have higher offsets than previous ones
-      if (existingCommits.length > 0) {
-        const latestOffset = existingCommits[existingCommits.length - 1].offset;
-        if (commit.offset <= latestOffset) {
-          throw new Error(
-            `New commit offset (${commit.offset}) must be greater than latest offset (${latestOffset})`,
-          );
-        }
-      }
-
-      existingCommits.push(commit);
-    }
-
-    if (persist) {
-      // this.save();
-    }
+    return commits[commits.length - 1];
   }
 
   /**
@@ -146,43 +123,25 @@ export class ControlPlaneService implements OnModuleInit, OnModuleDestroy {
    */
   public findPosition(partitionId: PartitionId, offset: Offset): FilePosition {
     const commits = this.commits.get(partitionId);
-    if (!commits || commits.length === 0) {
-      return 0;
-    }
+    if (!commits) return 0;
+    if (!commits.length) return 0;
 
-    // If offset is lower than the first commit, return 0
-    if (offset < commits[0].offset) {
-      return 0;
-    }
+    if (offset < commits[0].offset) return 0;
 
-    let lo = 0;
-    let hi = commits.length;
-
+    // Binary search: find the largest commit.offset <= target offset
+    let lo = 0,
+      hi = commits.length;
     while (lo < hi) {
-      const mid = Math.floor((lo + hi) / 2);
-      const commit = commits[mid];
-      if (commit.offset <= offset) {
+      const mid = (lo + hi) >> 1;
+      if (commits[mid].offset <= offset) {
         lo = mid + 1;
       } else {
         hi = mid;
       }
     }
 
-    // After binary search:
-    // lo is the index of the smallest element greater than offset
-    // lo-1 is the index of the largest element less than or equal to offset
-
-    // If lo is out of bounds, it means all elements are <= offset
-    if (lo >= commits.length) {
-      return commits[commits.length - 1].position;
-    }
-
-    // If the algorithm stopped at the first element and it's greater than offset
-    if (lo === 0) {
-      return 0;
-    }
-
-    // Return the position of the last commit with offset <= target offset
-    return commits[lo - 1].position;
+    // lo now is the index of the first commit with offset > target
+    // so lo - 1 is the last commit <= target
+    return lo === 0 ? 0 : commits[lo - 1].position;
   }
 }

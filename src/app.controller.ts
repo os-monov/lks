@@ -50,6 +50,7 @@ export class FetchRecordsParams {
 @Controller()
 export class AppController {
   private readonly baseDirectory: string = '/tmp/lks';
+  private readonly controlPlaneService: ControlPlaneService;
   private readonly writers: RecordLogWriter[];
   private readonly readers: RecordLogReader[];
 
@@ -57,7 +58,6 @@ export class AppController {
     @Inject('PARTITION_COUNT') partitionCount: number,
     @Inject('LOG_COUNT') logCount: number,
     private readonly cache: RecordCache,
-    private readonly controlPlaneService: ControlPlaneService,
     private readonly metricsService: MetricsService,
     private readonly logger: ConsoleLogger,
   ) {
@@ -65,6 +65,11 @@ export class AppController {
       fs.mkdirSync(this.baseDirectory, { recursive: true });
     }
 
+    const metadataFilePath = path.join(this.baseDirectory, `metadata.ndjson`);
+    this.controlPlaneService = new ControlPlaneService(
+      metadataFilePath,
+      partitionCount,
+    );
     this.readers = this.initializeReaders(logCount);
     this.writers = this.initializeWriters(logCount, partitionCount);
   }
@@ -185,7 +190,7 @@ export class AppController {
         const latestCommit = this.controlPlaneService.latestCommit(partitionId);
         offsets.set(partitionId, latestCommit.offset);
         this.logger.info(
-          `Partition ${partitionId} starting at offset: ${latestCommit.offset}.`,
+          `[Writer @ ${logFilePath}] Partition ${partitionId} is currently at offset: ${latestCommit.offset}.`,
         );
       }
       return new RecordLogWriter(

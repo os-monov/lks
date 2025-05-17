@@ -15,9 +15,10 @@ export class PartitionNotFoundException extends HttpException {
 }
 
 export class InternalServerException extends HttpException {
-  constructor() {
+  constructor(message?: string) {
     super('InternalServerException', 500);
     this.name = 'InternalServerException';
+    this.message = message;
   }
 }
 
