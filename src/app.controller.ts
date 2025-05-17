@@ -2,12 +2,18 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Inject,
   Param,
   Post,
   Res,
 } from '@nestjs/common';
-import { IsNumber, IsString, Max, Min } from 'class-validator';
+import {
+  IsNumber,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
 import { ApiResponse } from '@nestjs/swagger';
 import { Response } from 'express';
 import { Type } from 'class-transformer';
@@ -76,6 +82,7 @@ export class AppController {
   }
 
   @Post('produce/:partitionId')
+  @Header('Content-Type', 'application/x-www-form-urlencoded')
   @ApiResponse({
     status: 200,
   })
@@ -93,10 +100,13 @@ export class AppController {
       throw new PartitionNotFoundException();
     }
 
-    const [key, value] = input.data.split(':');
-    console.log(key, value);
-    const offset: Offset = await writer.write(params.partitionId, key, value);
+    const offset: Offset = await writer.write(
+      params.partitionId,
+      input.key,
+      input.value,
+    );
     this.metricsService.emit('api.produce', Date.now() - start);
+
     response.json({ offset: offset.toString() });
   }
 

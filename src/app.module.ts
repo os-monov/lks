@@ -4,12 +4,14 @@ import { RecordCache } from './record/record.cache';
 import { ConfigModule } from '@nestjs/config';
 import { MetricsService } from './metrics.service';
 import { ConsoleLogger } from './console.logger';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    ScheduleModule.forRoot(),
   ],
   controllers: [AppController],
   providers: [
