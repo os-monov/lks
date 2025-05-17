@@ -121,7 +121,7 @@ export class AppController {
       throw new PartitionNotFoundException();
     }
 
-    const offset: Offset = this.cache.offset(params.partitionId);
+    const offset: Offset = this.cache.latestOffset(params.partitionId);
     this.logger.info(
       `[${params.partitionId}]: Querying records for partition.`,
     );

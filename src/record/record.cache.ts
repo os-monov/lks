@@ -4,15 +4,22 @@ import { Offset, PartitionId } from '../segment/types';
 const SortedSet = require('tlhunter-sorted-set');
 
 /**
- * In-memory, per-partition record cache with fast ordered access.
+ * In-memory, per-partition record cache.
  */
 @Injectable()
 export class RecordCache {
   /**
-   * Map from partition ID to SortedSet of records.
-   * Sorted by offset (score).
+   * Because "tlhunter-sorted-set" only supports unique primitives and not unique objects,
+   * we need to maintain the set of unique offsets and then query for the appropriate
+   * records using a side-car hash map.
    */
-  private readonly cache: Map<PartitionId, InstanceType<typeof SortedSet>>;
+  private readonly cache: Map<
+    PartitionId,
+    {
+      offsets: InstanceType<typeof SortedSet>;
+      records: Map<number, Record>;
+    }
+  >;
 
   constructor() {
     this.cache = new Map();
@@ -26,11 +33,16 @@ export class RecordCache {
    */
   public insert(partitionId: PartitionId, records: Record[]): void {
     if (!this.cache.has(partitionId)) {
-      this.cache.set(partitionId, new SortedSet());
+      this.cache.set(partitionId, {
+        offsets: new SortedSet(),
+        records: new Map(),
+      });
     }
-    const set = this.cache.get(partitionId);
+    const { offsets, records: mapped } = this.cache.get(partitionId);
     for (const record of records) {
-      set.add(record, Number(record.getOffset())); // Score must be a number, not bigint!
+      const offset = Number(record.getOffset());
+      offsets.add(offset, offset); // de-duplicate offsets
+      mapped.set(offset, record); // last write wins
     }
   }
 
@@ -40,45 +52,21 @@ export class RecordCache {
    * @returns Array of Records (empty if partition not present).
    */
   public get(partitionId: PartitionId): Record[] {
-    const set = this.cache.get(partitionId);
-    if (!set) return [];
-    return set.range(0, -1); // All records
+    const entry = this.cache.get(partitionId);
+    if (!entry) return [];
+    const { offsets, records } = entry;
+    return offsets.range(0, -1).map((offset: number) => records.get(offset));
   }
 
   /**
-   * Get the offset of the last (highest) record for a partition.
+   * Get the offset of the latest record for a partition.
    * @param partitionId Partition number.
    * @returns Offset (bigint) of last record, or 0n if empty.
    */
-  public offset(partitionId: PartitionId): Offset {
-    const set = this.cache.get(partitionId);
-    if (!set || set.card() === 0) return 0n;
-    const last: Record = set.range(-1, -1)[0];
-    return last.getOffset();
-  }
-
-  /**
-   * Return the number of cached records for a partition.
-   * @param partitionId Partition number.
-   * @returns Record count.
-   */
-  public count(partitionId: PartitionId): number {
-    const set = this.cache.get(partitionId);
-    return set ? set.card() : 0;
-  }
-
-  /**
-   * Clear the cache for a given partition (for memory control/testing).
-   * @param partitionId Partition number.
-   */
-  public clear(partitionId: PartitionId): void {
-    this.cache.delete(partitionId);
-  }
-
-  /**
-   * Remove all data from the cache.
-   */
-  public clearAll(): void {
-    this.cache.clear();
+  public latestOffset(partitionId: PartitionId): Offset {
+    const entry = this.cache.get(partitionId);
+    if (!entry || entry.offsets.card() === 0) return 0n;
+    const lastOffset = entry.offsets.range(-1, -1)[0];
+    return BigInt(lastOffset);
   }
 }
