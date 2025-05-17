@@ -97,8 +97,8 @@ export class ControlPlaneService implements OnModuleInit, OnModuleDestroy {
   public lastCommit(partitionId: PartitionId): PartitionCommit {
     const commits: PartitionCommit[] = this.commits.get(partitionId);
     if (commits.length === 0) {
-      return { partitionId: partitionId, offset: 1n, position: 0 }
-    };
+      return { partitionId: partitionId, offset: 1n, position: 0 };
+    }
     return commits.at(commits.length - 1);
   }
 
@@ -113,7 +113,6 @@ export class ControlPlaneService implements OnModuleInit, OnModuleDestroy {
     // for (const commit of commits) {
     //   this.commits.get(commit.partitionId).push(commit);
     // }
-
     // this.save();
   }
 

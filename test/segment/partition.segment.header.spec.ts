@@ -16,7 +16,7 @@ describe('PartitionSegmentHeader', () => {
 
       expect(header.getPartitionId()).toBe(partitionId);
       expect(header.getOffset()).toBe(offset);
-      expect(header.getPayloadLength()).toBe(payloadLength);
+      expect(header.getPayloadSize()).toBe(payloadLength);
     });
   });
 
@@ -29,25 +29,27 @@ describe('PartitionSegmentHeader', () => {
       );
       const buffer = header.toBuffer();
 
-      expect(buffer.length).toBe(16); // 4 + 8 + 4 bytes
-      expect(buffer.readUInt32BE(0)).toBe(partitionId);
-      expect(buffer.readBigUInt64BE(4)).toBe(offset);
-      expect(buffer.readUInt32BE(12)).toBe(payloadLength);
+      expect(buffer.length).toBe(20); // 4 + 8 + 4 bytes
+      expect(buffer.readUInt32BE(0)).toBe(PartitionSegmentHeader.MAGIC);
+      expect(buffer.readUInt32BE(4)).toBe(partitionId);
+      expect(buffer.readBigUInt64BE(8)).toBe(offset);
+      expect(buffer.readUInt32BE(16)).toBe(payloadLength);
     });
   });
 
   describe('from', () => {
     it('should deserialize from a buffer correctly', () => {
-      const buffer = Buffer.alloc(16);
-      buffer.writeUInt32BE(partitionId, 0);
-      buffer.writeBigUInt64BE(offset, 4);
-      buffer.writeUInt32BE(payloadLength, 12);
+      const buffer = Buffer.alloc(20);
+      buffer.writeUint32BE(PartitionSegmentHeader.MAGIC, 0);
+      buffer.writeUInt32BE(partitionId, 4);
+      buffer.writeBigUInt64BE(offset, 8);
+      buffer.writeUInt32BE(payloadLength, 16);
 
       const header = PartitionSegmentHeader.from(buffer);
 
       expect(header.getPartitionId()).toBe(partitionId);
       expect(header.getOffset()).toBe(offset);
-      expect(header.getPayloadLength()).toBe(payloadLength);
+      expect(header.getPayloadSize()).toBe(payloadLength);
     });
   });
 
@@ -65,8 +67,8 @@ describe('PartitionSegmentHeader', () => {
         originalHeader.getPartitionId(),
       );
       expect(roundTripHeader.getOffset()).toBe(originalHeader.getOffset());
-      expect(roundTripHeader.getPayloadLength()).toBe(
-        originalHeader.getPayloadLength(),
+      expect(roundTripHeader.getPayloadSize()).toBe(
+        originalHeader.getPayloadSize(),
       );
     });
   });
@@ -87,7 +89,7 @@ describe('PartitionSegmentHeader', () => {
 
       expect(roundTripHeader.getPartitionId()).toBe(maxPartitionId);
       expect(roundTripHeader.getOffset()).toBe(maxOffset);
-      expect(roundTripHeader.getPayloadLength()).toBe(maxPayloadLength);
+      expect(roundTripHeader.getPayloadSize()).toBe(maxPayloadLength);
     });
 
     it('should handle minimum values (zero)', () => {
@@ -97,7 +99,7 @@ describe('PartitionSegmentHeader', () => {
 
       expect(roundTripHeader.getPartitionId()).toBe(0);
       expect(roundTripHeader.getOffset()).toBe(0n);
-      expect(roundTripHeader.getPayloadLength()).toBe(0);
+      expect(roundTripHeader.getPayloadSize()).toBe(0);
     });
   });
 });

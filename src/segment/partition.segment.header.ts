@@ -1,12 +1,13 @@
 import { Buffer } from 'buffer';
 import { Offset, PartitionId } from './types';
+import { InternalServerException } from '../exceptions';
 
 /**
  * Defines the header section of a {@link PartitionSegment}.
  */
 export class PartitionSegmentHeader {
-  /* Defines the size of the header */
-  public static readonly SIZE = 16;
+  public static readonly MAGIC = 0xabcd1234;
+  public static readonly SIZE = 20;
 
   /**
    * Immutable constructor.
@@ -17,7 +18,7 @@ export class PartitionSegmentHeader {
   constructor(
     private readonly partitionId: PartitionId,
     private readonly offset: Offset,
-    private readonly payloadLength: number,
+    private readonly payloadSize: number,
   ) {}
 
   /**
@@ -26,11 +27,15 @@ export class PartitionSegmentHeader {
    * @returns
    */
   static from(buffer: Buffer): PartitionSegmentHeader {
-    const partitionId = buffer.readUInt32BE(0);
-    const offset = buffer.readBigUInt64BE(4);
-    const payloadLength = buffer.readUInt32BE(12);
+    const magic = buffer.readUInt32BE(0);
+    if (magic !== PartitionSegmentHeader.MAGIC) {
+      throw new InternalServerException();
+    }
+    const partitionId = buffer.readUInt32BE(4);
+    const offset = buffer.readBigUInt64BE(8);
+    const payloadSize = buffer.readUInt32BE(16);
 
-    return new PartitionSegmentHeader(partitionId, offset, payloadLength);
+    return new PartitionSegmentHeader(partitionId, offset, payloadSize);
   }
 
   /**
@@ -39,9 +44,10 @@ export class PartitionSegmentHeader {
    */
   public toBuffer(): Buffer {
     const buffer = Buffer.alloc(PartitionSegmentHeader.SIZE);
-    buffer.writeUInt32BE(this.partitionId, 0);
-    buffer.writeBigUInt64BE(this.offset, 4);
-    buffer.writeUInt32BE(this.payloadLength, 12);
+    buffer.writeUInt32BE(PartitionSegmentHeader.MAGIC, 0);
+    buffer.writeUInt32BE(this.partitionId, 4);
+    buffer.writeBigUInt64BE(this.offset, 8);
+    buffer.writeUInt32BE(this.payloadSize, 16);
     return buffer;
   }
 
@@ -65,7 +71,7 @@ export class PartitionSegmentHeader {
    * Returns the size of the payload.
    * @returns
    */
-  public getPayloadLength(): number {
-    return this.payloadLength;
+  public getPayloadSize(): number {
+    return this.payloadSize;
   }
 }

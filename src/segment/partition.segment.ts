@@ -79,7 +79,7 @@ export class PartitionSegment {
       buffer.subarray(0, PartitionSegmentHeader.SIZE),
     );
     const payloadStart = PartitionSegmentHeader.SIZE;
-    const payloadEnd = payloadStart + header.getPayloadLength();
+    const payloadEnd = payloadStart + header.getPayloadSize();
 
     const records: Record[] = [];
     let position = payloadStart;
@@ -88,7 +88,7 @@ export class PartitionSegment {
     while (position < payloadEnd) {
       const keyLength = buffer.readUInt32BE(position);
       const valueLength = buffer.readUInt32BE(
-        position + PartitionSegmentPayloadItem.LENGTH_SIZE + keyLength
+        position + PartitionSegmentPayloadItem.LENGTH_SIZE + keyLength,
       );
       const itemSize =
         PartitionSegmentPayloadItem.LENGTH_SIZE +

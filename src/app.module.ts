@@ -19,4 +19,4 @@ import { RecordCache } from './record/record.cache';
     },
   ],
 })
-export class AppModule { }
+export class AppModule {}

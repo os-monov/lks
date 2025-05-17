@@ -1,95 +1,106 @@
-import * as fs from 'fs';
+import { promises as fs } from 'fs';
+import { FilePosition, PartitionId } from '../segment/types';
+import { Record } from './record';
 import { PartitionSegmentHeader } from '../segment/partition.segment.header';
-import { PartitionSegment } from '../segment/partition.segment';
-import * as path from 'path';
+import { PartitionSegmentPayloadItem } from '../segment/partition.segment.payload.item';
 
 export class RecordLogReader {
-    constructor(
-        private readonly logFilePath: string
-    ) {
+  constructor(private readonly logFilePath: string) {}
 
+  /**
+   * Query the log file for the relevant records from the provided start position.
+   * @param partitionId
+   * @param position
+   */
+  public async query(
+    partitionId: PartitionId,
+    position: FilePosition,
+  ): Promise<Record[]> {
+    console.log(
+      `[${new Date()}] Querying ${this.logFilePath} for partition: ${partitionId} starting at position: ${position}.`,
+    );
+    const results: Record[] = [];
+
+    const file = await fs.open(this.logFilePath, 'r');
+    const stats = await file.stat();
+    console.log(
+      `[${new Date()}] Size of ${this.logFilePath} is ${stats.size} bytes.`,
+    );
+
+    if (stats.size == 0) {
+      await file.close();
+      return results;
     }
 
+    const magicBuf = Buffer.alloc(4);
+    let currentPosition: FilePosition = position;
 
-    public scan() {
-        if (!fs.existsSync(this.logFilePath)) {
-            console.log(`Log file ${this.logFilePath} not found`);
-            return;
-        }
-
-        const fileBuf = fs.readFileSync(this.logFilePath);
-        const outLines: string[] = [];
-
-        let position = 0;
-        while (position < fileBuf.length) {
-            /* 1. Guard: make sure header is complete */
-            if (position + PartitionSegmentHeader.SIZE > fileBuf.length) {
-                console.log('Incomplete header at end of file - aborting scan');
-                break;
-            }
-
-            /* 2. Parse header to know payload length */
-            const headerBuf = fileBuf.subarray(
-                position,
-                position + PartitionSegmentHeader.SIZE,
-            );
-            const header = PartitionSegmentHeader.from(headerBuf);
-            const payloadEnd =
-                position + PartitionSegmentHeader.SIZE + header.getPayloadLength();
-
-            /* 3. Guard: make sure payload is complete */
-            if (payloadEnd > fileBuf.length) {
-                console.log(
-                    'Incomplete payload for final segment - aborting scan',
-                );
-                break;
-            }
-
-            /* 4. Slice full segment buffer and reconstruct segment */
-            const segmentBuf = fileBuf.subarray(position, payloadEnd);
-            const segment = PartitionSegment.from(segmentBuf);
-
-            /* Output segment information in requested format */
-            outLines.push(`partition #${segment.getPartitionId()}`);
-            segment.getRecords().forEach((rec) => {
-                outLines.push(`${rec.getOffset()} | ${rec.getKey()} | ${rec.getValue()}`);
-            });
-            outLines.push(''); // Empty line between segments
-
-            /* Advance to the next segment */
-            position = payloadEnd;
-        }
-
-        const outPath = path.resolve('/tmp/lks', 'segments.log');
-        fs.writeFileSync(outPath, outLines.join('\n'));
-        console.log(`Segments log written to ${outPath}`);
+    while (currentPosition + PartitionSegmentHeader.SIZE <= stats.size) {
+      await file.read(magicBuf, 0, 4, currentPosition);
+      if (magicBuf.readUInt32BE(0) === PartitionSegmentHeader.MAGIC) {
+        break;
+      }
+      currentPosition += 1;
     }
 
+    if (currentPosition + PartitionSegmentHeader.SIZE > stats.size) {
+      await file.close();
+      return results;
+    }
 
+    const headerBuffer = Buffer.alloc(PartitionSegmentHeader.SIZE);
+    while (currentPosition + PartitionSegmentHeader.SIZE <= stats.size) {
+      await file.read(
+        headerBuffer,
+        0,
+        PartitionSegmentHeader.SIZE,
+        currentPosition,
+      );
+      const header = PartitionSegmentHeader.from(headerBuffer);
 
-    //     /**
-    //  * Query the log file for the relevant records.
-    //  * @param partitionId
-    //  * @param position
-    //  * @returns
-    //  */
-    //     public async query(
-    //         partitionId: PartitionId,
-    //         position: FilePosition,
-    //     ): Promise<Record[]> {
-    //         if (this.position === 0) {
-    //             return [];
-    //         }
+      if (header.getPartitionId() === partitionId) {
+        const payloadLength = header.getPayloadSize();
+        const payloadBuffer = Buffer.alloc(payloadLength);
+        await file.read(
+          payloadBuffer,
+          0,
+          payloadLength,
+          currentPosition + PartitionSegmentHeader.SIZE,
+        );
 
-    //         // segmentHeader =
+        let payloadPosition = 0;
+        let offset = header.getOffset();
 
-    //         // fs.createReadStream(this.logFile, { start,  end })
-    //         // const data =
-    //     }
+        while (payloadPosition < payloadLength) {
+          const keyLength = payloadBuffer.readUInt32BE(payloadPosition);
+          payloadPosition += PartitionSegmentPayloadItem.LENGTH_SIZE;
 
-    // async onDestroy() {
-    //     clearInterval(this.flushInterval);
-    //     await this.flush();
-    //     console.log(`[RecordLog ${this.index}] Flushed on destroy`);
-    // }
+          const key = payloadBuffer.toString(
+            'utf8',
+            payloadPosition,
+            payloadPosition + keyLength,
+          );
+          payloadPosition += keyLength;
+
+          const valueLength = payloadBuffer.readUInt32BE(payloadPosition);
+          payloadPosition += PartitionSegmentPayloadItem.LENGTH_SIZE;
+
+          const value = payloadBuffer.toString(
+            'utf8',
+            payloadPosition,
+            payloadPosition + valueLength,
+          );
+          payloadPosition += valueLength;
+
+          results.push(new Record(offset, key, value));
+          offset += 1n;
+        }
+      }
+
+      currentPosition += PartitionSegmentHeader.SIZE + header.getPayloadSize();
+    }
+
+    await file.close();
+    return results;
+  }
 }

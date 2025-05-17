@@ -3,16 +3,17 @@ import { IsNumber, IsString, Max, Min } from 'class-validator';
 import { ApiResponse } from '@nestjs/swagger';
 import { Response } from 'express';
 import { Type } from 'class-transformer';
-import {
-  PartitionNotFoundException,
-} from './exceptions';
+import { PartitionNotFoundException } from './exceptions';
 import { Offset, PartitionId } from './segment/types';
 import { RecordCache } from './record/record.cache';
 import { ControlPlaneService } from './control.plane.service';
-import { RecordLogWriter, RecordLogWriterConfiguration } from './record/record.log.writer';
+import {
+  RecordLogWriter,
+  RecordLogWriterConfiguration,
+} from './record/record.log.writer';
 import { RecordLogReader } from './record/record.log.reader';
 import * as path from 'path';
-import * as fs from "fs";
+import * as fs from 'fs';
 
 export class ProduceRecordParams {
   @IsNumber()
@@ -40,13 +41,13 @@ export class FetchRecordsParams {
 
 @Controller()
 export class AppController {
-  private readonly baseDirectory: string = "/tmp/lks";
+  private readonly baseDirectory: string = '/tmp/lks';
   private readonly writers: RecordLogWriter[];
   private readonly readers: RecordLogReader[];
 
   constructor(
-    @Inject("PARTITION_COUNT") partitionCount: number,
-    @Inject("LOG_COUNT") logCount: number,
+    @Inject('PARTITION_COUNT') partitionCount: number,
+    @Inject('LOG_COUNT') logCount: number,
     private readonly cache: RecordCache,
     private readonly controlPlaneService: ControlPlaneService,
   ) {
@@ -59,7 +60,7 @@ export class AppController {
 
       const partitions: PartitionId[] = Array.from(
         { length: partitionCount },
-        (_, idx) => idx,          //  ← idx is a number
+        (_, idx) => idx, //  ← idx is a number
       ).filter((p) => p % logCount === i);
 
       const offsets: Map<PartitionId, Offset> = new Map();
@@ -71,16 +72,16 @@ export class AppController {
         logFilePath: logFilePath,
         offsets: offsets,
         position: 0,
-        onCommit: controlPlaneService.commit
-      }
-      return new RecordLogWriter(config)
+        onCommit: controlPlaneService.commit,
+      };
+      return new RecordLogWriter(config);
     });
   }
 
   /**
    * Returns reader for specific partition.
-   * @param partitionId 
-   * @returns 
+   * @param partitionId
+   * @returns
    */
   private getReader(partitionId: PartitionId): RecordLogReader {
     return this.readers[partitionId % this.readers.length];
@@ -88,8 +89,8 @@ export class AppController {
 
   /**
    * Returns writer for specific partition.
-   * @param partitionId 
-   * @returns 
+   * @param partitionId
+   * @returns
    */
   private getWriter(partitionId: PartitionId): RecordLogWriter {
     return this.writers[partitionId % this.writers.length];
@@ -106,11 +107,17 @@ export class AppController {
   ): Promise<any> {
     const writer = this.getWriter(params.partitionId);
     if (!writer) {
-      console.log(`No record log writer found for partition: ${params.partitionId}`);
+      console.log(
+        `No record log writer found for partition: ${params.partitionId}`,
+      );
       throw new PartitionNotFoundException();
     }
 
-    const offset: Offset = await writer.write(params.partitionId, input.key, input.value);
+    const offset: Offset = await writer.write(
+      params.partitionId,
+      input.key,
+      input.value,
+    );
     response.json({ offset: offset.toString() });
   }
 

@@ -8,7 +8,10 @@ describe('PartitionSegment', () => {
   const startingOffset = 1000n;
 
   // Helper to create valid sequential records
-  const initRecords = (count: number, startOffset = startingOffset): Record[] => {
+  const initRecords = (
+    count: number,
+    startOffset = startingOffset,
+  ): Record[] => {
     const records: Record[] = [];
     for (let i = 0; i < count; i++) {
       records.push(new Record(startOffset + BigInt(i), `key${i}`, `value${i}`));
@@ -19,7 +22,11 @@ describe('PartitionSegment', () => {
   describe('constructor', () => {
     it('should create a segment with valid records', () => {
       const records = initRecords(300);
-      const segment = new PartitionSegment(partitionId, startingOffset, records);
+      const segment = new PartitionSegment(
+        partitionId,
+        startingOffset,
+        records,
+      );
 
       expect(segment.getPartitionId()).toBe(partitionId);
       expect(segment.getOffset()).toBe(startingOffset);
@@ -55,11 +62,17 @@ describe('PartitionSegment', () => {
   describe('toBuffer', () => {
     it('should correctly serialize a segment', () => {
       const records = initRecords(2);
-      const segment = new PartitionSegment(partitionId, startingOffset, records);
+      const segment = new PartitionSegment(
+        partitionId,
+        startingOffset,
+        records,
+      );
       const buffer = segment.toBuffer();
 
       // Should contain header + payload
-      expect(buffer.length).toBe(PartitionSegmentHeader.SIZE + segment.getPayloadSize());
+      expect(buffer.length).toBe(
+        PartitionSegmentHeader.SIZE + segment.getPayloadSize(),
+      );
 
       // Header should have correct values
       const headerBuffer = buffer.subarray(0, PartitionSegmentHeader.SIZE);
@@ -67,14 +80,18 @@ describe('PartitionSegment', () => {
 
       expect(header.getPartitionId()).toBe(partitionId);
       expect(header.getOffset()).toBe(startingOffset);
-      expect(header.getPayloadLength()).toBe(segment.getPayloadSize());
+      expect(header.getPayloadSize()).toBe(segment.getPayloadSize());
     });
   });
 
   describe('from', () => {
     it('should correctly deserialize a buffer to a segment', () => {
       const records = initRecords(3);
-      const segment = new PartitionSegment(partitionId, startingOffset, records);
+      const segment = new PartitionSegment(
+        partitionId,
+        startingOffset,
+        records,
+      );
       const buffer = segment.toBuffer();
 
       const deserialized = PartitionSegment.from(buffer);
@@ -87,7 +104,7 @@ describe('PartitionSegment', () => {
     it('should correctly deserialize records with their content', () => {
       const records = [
         new Record(1000n, 'key0', 'value0'),
-        new Record(1001n, 'key1', 'value1')
+        new Record(1001n, 'key1', 'value1'),
       ];
 
       const originalSegment = new PartitionSegment(partitionId, 1000n, records);
@@ -108,15 +125,22 @@ describe('PartitionSegment', () => {
     it('should maintain data integrity through serialization and deserialization', () => {
       const testCases = [
         { key: 'simple', value: 'value' },
-        { key: 'special chars: !@#$%^&*()', value: 'more special: ~`[]{}\\|;:\'",.<>/?' },
-        { key: '你好', value: '世界' },  // Unicode characters
+        {
+          key: 'special chars: !@#$%^&*()',
+          value: 'more special: ~`[]{}\\|;:\'",.<>/?',
+        },
+        { key: '你好', value: '世界' }, // Unicode characters
       ];
 
-      const records = testCases.map((tc, i) =>
-        new Record(startingOffset + BigInt(i), tc.key, tc.value)
+      const records = testCases.map(
+        (tc, i) => new Record(startingOffset + BigInt(i), tc.key, tc.value),
       );
 
-      const originalSegment = new PartitionSegment(partitionId, startingOffset, records);
+      const originalSegment = new PartitionSegment(
+        partitionId,
+        startingOffset,
+        records,
+      );
       const buffer = originalSegment.toBuffer();
       const deserializedSegment = PartitionSegment.from(buffer);
 
@@ -126,9 +150,15 @@ describe('PartitionSegment', () => {
       expect(deserializedRecords.length).toBe(originalRecords.length);
 
       for (let i = 0; i < originalRecords.length; i++) {
-        expect(deserializedRecords[i].getOffset()).toBe(originalRecords[i].getOffset());
-        expect(deserializedRecords[i].getKey()).toBe(originalRecords[i].getKey());
-        expect(deserializedRecords[i].getValue()).toBe(originalRecords[i].getValue());
+        expect(deserializedRecords[i].getOffset()).toBe(
+          originalRecords[i].getOffset(),
+        );
+        expect(deserializedRecords[i].getKey()).toBe(
+          originalRecords[i].getKey(),
+        );
+        expect(deserializedRecords[i].getValue()).toBe(
+          originalRecords[i].getValue(),
+        );
       }
     });
   });
