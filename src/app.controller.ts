@@ -22,6 +22,7 @@ import { RecordLogReader } from './record/record.log.reader';
 import * as path from 'path';
 import * as fs from 'fs';
 import { Record } from './record/record';
+import { Utils } from './utils';
 
 export class ProduceRecordParams {
   @IsNumber()
@@ -50,6 +51,7 @@ export class FetchRecordsParams {
 @Controller()
 export class AppController {
   private readonly baseDirectory: string = '/tmp/lks';
+  private readonly metricsFilePath = path.join(this.baseDirectory, 'metrics.csv');
   private readonly writers: RecordLogWriter[];
   private readonly readers: RecordLogReader[];
 
@@ -86,6 +88,9 @@ export class AppController {
       const logFilePath = path.join(this.baseDirectory, `${i}.log`);
       return new RecordLogReader(logFilePath);
     });
+
+    fs.writeFileSync(this.metricsFilePath, "");
+    fs.writeFileSync(this.metricsFilePath, 'timestamp,metric,value\n');
   }
 
   /**
@@ -115,6 +120,7 @@ export class AppController {
     @Body() input: ProduceRecordInput,
     @Res() response: Response,
   ): Promise<any> {
+    const start = Date.now()
     const writer = this.getWriter(params.partitionId);
     if (!writer) {
       console.log(
@@ -128,8 +134,12 @@ export class AppController {
       input.key,
       input.value,
     );
+    const end = Date.now()
+    const latency = end - start;
+    Utils.emit("api.produce", latency);
     response.json({ offset: offset.toString() });
   }
+
 
   @Get('fetch/:partitionId')
   @ApiResponse({
@@ -193,6 +203,7 @@ export class AppController {
     console.log(
       `[${new Date()}] Fetching all records for partition ${params.partitionId} took ${apiLatency}ms.`,
     );
+    Utils.emit("api.fetch", apiLatency);
     response.json(result);
   }
 }

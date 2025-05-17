@@ -1,11 +1,13 @@
 import axios from 'axios';
 import { faker } from "@faker-js/faker";
 import * as http from "http";
+const pLimit = require('p-limit');
 
 const SERVER_URL = 'http://localhost:8123';
 const PARTITIONS = 100;
-const TPS_PER_PARTITION = 20;
+const TPS_PER_PARTITION = 50;
 const QUERY_INTERVAL_MS = 1000;
+const VALIDATION_CONCURRENCY = 20; // Adjust as needed for your system
 
 interface RecordKV {
   key: string;
@@ -16,7 +18,7 @@ const httpAgent = new http.Agent({
   keepAlive: true,
   maxSockets: 200,
   maxFreeSockets: 200,
-})
+});
 
 const api = axios.create({
   baseURL: SERVER_URL,
@@ -24,6 +26,7 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' }
 });
 
+// ------------- PRODUCER ---------------
 class PartitionProducer {
   public produced: RecordKV[] = [];
   private timer: NodeJS.Timeout | null = null;
@@ -46,7 +49,6 @@ class PartitionProducer {
     };
     try {
       await api.post(`/produce/${this.partitionId}`, payload);
-
       this.produced.push(payload);
       if (this.produced.length % 10 === 0) {
         console.log(`[partition ${this.partitionId}] Produced ${this.produced.length} records`);
@@ -57,16 +59,22 @@ class PartitionProducer {
   }
 }
 
+// ------------- BENCHMARK RUNNER ---------------
 class BenchmarkRunner {
   private producers: PartitionProducer[];
-  private queryTimers: NodeJS.Timeout[] = [];
+  private validatorTimers: NodeJS.Timeout[] = [];
+  private validationInFlight: boolean[] = [];
+  private limitValidate: ReturnType<typeof pLimit>;
 
   constructor(
     private partitions = 10,
-    private tpsPerPartition = 100,
-    private queryIntervalMs = 1000
+    private tpsPerPartition = 1,
+    private queryIntervalMs = 1000,
+    private validationConcurrency = 1
   ) {
     this.producers = [];
+    this.limitValidate = pLimit(this.validationConcurrency);
+    this.validationInFlight = Array(this.partitions).fill(false);
   }
 
   start() {
@@ -76,30 +84,37 @@ class BenchmarkRunner {
       this.producers.push(producer);
     }
 
-    for (let i = 0; i < this.partitions; i++) {
-      const partitionId = i;
-      const initialDelay = Math.random() * this.queryIntervalMs;
+    // for (let i = 0; i < this.partitions; i++) {
+    //   const partitionId = i;
+    //   const initialDelay = Math.random() * this.queryIntervalMs;
+    //   setTimeout(() => {
+    //     this.runValidationLoop(partitionId);
+    //   }, initialDelay);
+    // }
 
-      setTimeout(() => {
-        this.validatePartition(partitionId);
-        const timerId = setInterval(() => {
-          this.validatePartition(partitionId);
-        }, this.queryIntervalMs);
-        this.queryTimers.push(timerId);
-      }, initialDelay);
-    }
-
-    console.log(
-      `Started ${this.partitions} producers at ${this.tpsPerPartition} TPS each. ` +
-      `Querying each of ${this.partitions} partitions approx. every ${this.queryIntervalMs}ms with staggered starts.`
-    );
+    // console.log(
+    //   `Started ${this.partitions} producers at ${this.tpsPerPartition} TPS each. ` +
+    //   `Validating partitions every ~${this.queryIntervalMs}ms with concurrency limit ${this.validationConcurrency}.`
+    // );
   }
 
   stop() {
     this.producers.forEach((p) => p.stop());
-    this.queryTimers.forEach((timerId) => clearInterval(timerId));
-    this.queryTimers = [];
-    console.log('Stopped producers and partition query timers.');
+    // this.validatorTimers.forEach((timerId) => clearTimeout(timerId));
+    // this.validatorTimers = [];
+    console.log('Stopped producers and validation timers.');
+  }
+
+  private runValidationLoop(partitionId: number) {
+    const validateAndSchedule = async () => {
+      if (!this.validationInFlight[partitionId]) {
+        this.validationInFlight[partitionId] = true;
+        await this.limitValidate(() => this.validatePartition(partitionId));
+        this.validationInFlight[partitionId] = false;
+      }
+      this.validatorTimers[partitionId] = setTimeout(validateAndSchedule, this.queryIntervalMs);
+    };
+    validateAndSchedule();
   }
 
   async validatePartition(partitionId: number) {
@@ -110,7 +125,6 @@ class BenchmarkRunner {
       const latency = endTime - startTime;
 
       const fetched: RecordKV[] = response.data;
-
       const producer = this.producers[partitionId];
       if (!producer) {
         console.warn(`[VALIDATION] Partition ${partitionId}: No producer found. Latency: ${latency}ms`);
@@ -145,7 +159,8 @@ class BenchmarkRunner {
   }
 }
 
-const runner = new BenchmarkRunner(PARTITIONS, TPS_PER_PARTITION, QUERY_INTERVAL_MS);
+// --- Launch the test ---
+const runner = new BenchmarkRunner(PARTITIONS, TPS_PER_PARTITION, QUERY_INTERVAL_MS, VALIDATION_CONCURRENCY);
 runner.start();
 
 process.on('SIGINT', () => {

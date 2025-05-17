@@ -12,6 +12,7 @@ import { bufferTime } from 'rxjs';
 import { groupBy } from 'lodash';
 import { PartitionSegment } from 'src/segment/partition.segment';
 import { ControlPlaneService } from 'src/control.plane.service';
+import { Utils } from 'src/utils';
 
 export interface RecordLogWriterConfiguration {
   logFilePath: string;
@@ -40,6 +41,7 @@ export class RecordLogWriter {
       console.log(`Created log file: ${this.logFilePath}`);
     }
 
+
     /* Initialize the buffer subject */
     this.bufferSubject
       .pipe(bufferTime(RecordLogWriter.BATCH_DURATION_MS))
@@ -62,6 +64,7 @@ export class RecordLogWriter {
     key: string,
     value: string,
   ): Promise<Offset> {
+    const start = Date.now()
     if (!this.offsets.has(partitionId)) {
       console.log(
         `InternalServiceException: Offset not found for partition: ${partitionId}`,
@@ -74,6 +77,8 @@ export class RecordLogWriter {
     const bufferRecord = new BufferRecord(partitionId, offset, key, value);
     this.bufferSubject.next(bufferRecord);
 
+    const end = Date.now()
+    Utils.emit("writer.write", end - start)
     return bufferRecord.promise;
   }
 
@@ -82,6 +87,7 @@ export class RecordLogWriter {
    * @param records
    */
   private async flush(records: BufferRecord[]): Promise<void> {
+    const start = Date.now()
     console.log(
       `[${new Date()}] Flushing ${records.length} records to ${this.logFilePath}.`,
     );
@@ -91,6 +97,7 @@ export class RecordLogWriter {
         (r: BufferRecord) => r.getPartitionId(),
       );
       const commits: PartitionCommit[] = [];
+      const buffers: Buffer[] = [];
       for (const [partitionId, bufferRecords] of Object.entries(
         recordsByPartition,
       )) {
@@ -106,8 +113,7 @@ export class RecordLogWriter {
         );
         const segmentBuffer = segment.toBuffer();
 
-        // todo: maybe append all at once
-        await fs.promises.appendFile(this.logFilePath, segmentBuffer);
+        buffers.push(segmentBuffer)
 
         commits.push({
           partitionId: Number(partitionId),
@@ -117,6 +123,17 @@ export class RecordLogWriter {
 
         // ensure position is correct
         this.position += segmentBuffer.length;
+      }
+
+      if (buffers.length > 0) {
+        const concatenated = Buffer.concat(buffers);
+
+        const start = Date.now()
+        fs.appendFileSync(this.logFilePath, concatenated)
+        const end = Date.now();
+        Utils.emit("writer.flush.append", end - start);
+        Utils.emit("record.count", records.length);
+        Utils.emit("buffer.size", concatenated.length);
       }
 
       this.controlPlaneService.commit(commits);
@@ -130,5 +147,7 @@ export class RecordLogWriter {
       records.forEach((record) => record.reject(new InternalServerException()));
       console.error(`Error flushing records for ${this.logFilePath}`);
     }
+    const end = Date.now()
+    Utils.emit("writer.flush", end - start)
   }
 }

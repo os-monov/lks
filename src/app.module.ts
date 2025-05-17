@@ -2,9 +2,12 @@ import { Module } from '@nestjs/common';
 import { ControlPlaneService } from './control.plane.service';
 import { AppController } from './app.controller';
 import { RecordCache } from './record/record.cache';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [],
+  imports: [ConfigModule.forRoot({
+    isGlobal: true
+  })],
   controllers: [AppController],
   providers: [
     ControlPlaneService,
@@ -19,4 +22,4 @@ import { RecordCache } from './record/record.cache';
     },
   ],
 })
-export class AppModule {}
+export class AppModule { }

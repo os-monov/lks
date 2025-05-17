@@ -121,7 +121,7 @@ export class ControlPlaneService implements OnModuleInit, OnModuleDestroy {
     for (const commit of commits) {
       this.commits.get(commit.partitionId).push(commit);
     }
-    this.save();
+    // this.save();
   }
 
   /**
