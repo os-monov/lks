@@ -1,18 +1,18 @@
-import { Body, Controller, Get, Param, Post, Res } from '@nestjs/common';
+import { Body, Controller, Inject, Param, Post, Res } from '@nestjs/common';
 import { IsNumber, IsString, Max, Min } from 'class-validator';
 import { ApiResponse } from '@nestjs/swagger';
 import { Response } from 'express';
 import { Type } from 'class-transformer';
-import { RecordLogManager } from './record/record.log.manager';
 import {
-  InternalServerException,
   PartitionNotFoundException,
 } from './exceptions';
-import { Record } from './record/record';
-import { FilePosition, Offset } from './segment/types';
+import { Offset, PartitionId } from './segment/types';
 import { RecordCache } from './record/record.cache';
-import { RecordLog } from './record/record.log';
 import { ControlPlaneService } from './control.plane.service';
+import { RecordLogWriter, RecordLogWriterConfiguration } from './record/record.log.writer';
+import { RecordLogReader } from './record/record.log.reader';
+import * as path from 'path';
+import * as fs from "fs";
 
 export class ProduceRecordParams {
   @IsNumber()
@@ -40,11 +40,60 @@ export class FetchRecordsParams {
 
 @Controller()
 export class AppController {
+  private readonly baseDirectory: string = "/tmp/lks";
+  private readonly writers: RecordLogWriter[];
+  private readonly readers: RecordLogReader[];
+
   constructor(
-    private readonly manager: RecordLogManager,
+    @Inject("PARTITION_COUNT") partitionCount: number,
+    @Inject("LOG_COUNT") logCount: number,
     private readonly cache: RecordCache,
     private readonly controlPlaneService: ControlPlaneService,
-  ) {}
+  ) {
+    if (!fs.existsSync(this.baseDirectory)) {
+      fs.mkdirSync(this.baseDirectory, { recursive: true });
+    }
+
+    this.writers = Array.from({ length: logCount }, (_, i) => {
+      const logFilePath = path.join(this.baseDirectory, `${i}.log`);
+
+      const partitions: PartitionId[] = Array.from(
+        { length: partitionCount },
+        (_, idx) => idx,          //  ← idx is a number
+      ).filter((p) => p % logCount === i);
+
+      const offsets: Map<PartitionId, Offset> = new Map();
+      for (const partition of partitions) {
+        const lastCommit = this.controlPlaneService.lastCommit(partition);
+        offsets.set(partition, lastCommit.offset);
+      }
+      const config: RecordLogWriterConfiguration = {
+        logFilePath: logFilePath,
+        offsets: offsets,
+        position: 0,
+        onCommit: controlPlaneService.commit
+      }
+      return new RecordLogWriter(config)
+    });
+  }
+
+  /**
+   * Returns reader for specific partition.
+   * @param partitionId 
+   * @returns 
+   */
+  private getReader(partitionId: PartitionId): RecordLogReader {
+    return this.readers[partitionId % this.readers.length];
+  }
+
+  /**
+   * Returns writer for specific partition.
+   * @param partitionId 
+   * @returns 
+   */
+  private getWriter(partitionId: PartitionId): RecordLogWriter {
+    return this.writers[partitionId % this.writers.length];
+  }
 
   @Post('produce/:partitionId')
   @ApiResponse({
@@ -55,47 +104,41 @@ export class AppController {
     @Body() input: ProduceRecordInput,
     @Res() response: Response,
   ): Promise<any> {
-    const log = this.manager.getLog(params.partitionId);
-    if (!log) {
+    const writer = this.getWriter(params.partitionId);
+    if (!writer) {
+      console.log(`No record log writer found for partition: ${params.partitionId}`);
       throw new PartitionNotFoundException();
     }
 
-    // how to timeout after 500ms
-    const callback = (result: number | Error) => {
-      if (result instanceof Error) {
-        throw new InternalServerException();
-      }
-      response.json({ offset: result });
-    };
-
-    log.write(params.partitionId, input.key, input.value, callback);
+    const offset: Offset = await writer.write(params.partitionId, input.key, input.value);
+    response.json({ offset: offset.toString() });
   }
 
-  @Get('fetch/:partitionId')
-  @ApiResponse({
-    status: 200,
-    type: [Record],
-  })
-  async fetchRecords(
-    @Param() params: FetchRecordsParams,
-    @Res() response: Response,
-  ): Promise<void> {
-    const log: RecordLog = this.manager.getLog(params.partitionId);
-    if (!log) {
-      throw new PartitionNotFoundException();
-    }
+  // @Get('fetch/:partitionId')
+  // @ApiResponse({
+  //   status: 200,
+  //   type: [Record],
+  // })
+  // async fetchRecords(
+  //   @Param() params: FetchRecordsParams,
+  //   @Res() response: Response,
+  // ): Promise<void> {
+  //   const log: RecordLog = this.manager.getLog(params.partitionId);
+  //   if (!log) {
+  //     throw new PartitionNotFoundException();
+  //   }
 
-    const offset: Offset = this.cache.offset(params.partitionId);
-    const position: FilePosition = this.controlPlaneService.findPosition(
-      params.partitionId,
-      offset,
-    );
-    const tail: Record[] = await log.query(params.partitionId, position);
+  //   const offset: Offset = this.cache.offset(params.partitionId);
+  //   const position: FilePosition = this.controlPlaneService.findPosition(
+  //     params.partitionId,
+  //     offset,
+  //   );
+  //   const tail: Record[] = await log.query(params.partitionId, position);
 
-    this.cache.insert(params.partitionId, tail);
+  //   this.cache.insert(params.partitionId, tail);
 
-    const result: Record[] = this.cache.get(params.partitionId);
+  //   const result: Record[] = this.cache.get(params.partitionId);
 
-    response.json(result);
-  }
+  //   response.json(result);
+  // }
 }

@@ -94,6 +94,14 @@ export class ControlPlaneService implements OnModuleInit, OnModuleDestroy {
     return commits.at(commits.length - 1).offset;
   }
 
+  public lastCommit(partitionId: PartitionId): PartitionCommit {
+    const commits: PartitionCommit[] = this.commits.get(partitionId);
+    if (commits.length === 0) {
+      return { partitionId: partitionId, offset: 1n, position: 0 }
+    };
+    return commits.at(commits.length - 1);
+  }
+
   /**
    *
    * @param commits
@@ -102,11 +110,11 @@ export class ControlPlaneService implements OnModuleInit, OnModuleDestroy {
     // ensure all commits are valid or throw exception
     // validate that all commits are the expected ones and we don't have an older offset beating an earlier one
     // write to disk to persist (db)
-    for (const commit of commits) {
-      this.commits.get(commit.partitionId).push(commit);
-    }
+    // for (const commit of commits) {
+    //   this.commits.get(commit.partitionId).push(commit);
+    // }
 
-    this.save();
+    // this.save();
   }
 
   /**

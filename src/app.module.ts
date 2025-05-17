@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ControlPlaneService } from './control.plane.service';
 import { AppController } from './app.controller';
-import { RecordLogManager } from './record/record.log.manager';
 import { RecordCache } from './record/record.cache';
 
 @Module({
@@ -9,7 +8,6 @@ import { RecordCache } from './record/record.cache';
   controllers: [AppController],
   providers: [
     ControlPlaneService,
-    RecordLogManager,
     RecordCache,
     {
       provide: 'PARTITION_COUNT',
@@ -21,4 +19,4 @@ import { RecordCache } from './record/record.cache';
     },
   ],
 })
-export class AppModule {}
+export class AppModule { }

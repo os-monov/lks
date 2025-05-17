@@ -26,9 +26,15 @@ dependencies:
   class-validator:
     specifier: ^0.14.2
     version: 0.14.2
+  crypto:
+    specifier: ^1.0.1
+    version: 1.0.1
   fs:
     specifier: 0.0.1-security
     version: 0.0.1-security
+  lodash:
+    specifier: ^4.17.21
+    version: 4.17.21
   nanoid:
     specifier: 3.3.6
     version: 3.3.6
@@ -39,13 +45,16 @@ dependencies:
     specifier: ^0.1.13
     version: 0.1.14
   rxjs:
-    specifier: ^7.8.1
+    specifier: ^7.8.2
     version: 7.8.2
   tlhunter-sorted-set:
     specifier: ^0.1.0
     version: 0.1.0
 
 devDependencies:
+  '@faker-js/faker':
+    specifier: ^9.8.0
+    version: 9.8.0
   '@nestjs/cli':
     specifier: ^10.0.0
     version: 10.4.9
@@ -529,6 +538,11 @@ packages:
   /@eslint/js@8.57.1:
     resolution: {integrity: sha512-d9zaMRSTIKDLhctzH12MtXvJKSSUhaHcjV+2Z+GK+EEY7XKpP5yR4x+N3TAcHTcu963nIr+TMcCb4DBCYX1z6Q==}
     engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
+    dev: true
+
+  /@faker-js/faker@9.8.0:
+    resolution: {integrity: sha512-U9wpuSrJC93jZBxx/Qq2wPjCuYISBueyVUGK7qqdmj7r/nxaxwW8AQDCLeRO7wZnjj94sh3p246cAYjUKuqgfg==}
+    engines: {node: '>=18.0.0', npm: '>=9.0.0'}
     dev: true
 
   /@humanwhocodes/config-array@0.13.0:
@@ -2270,6 +2284,11 @@ packages:
       shebang-command: 2.0.0
       which: 2.0.2
     dev: true
+
+  /crypto@1.0.1:
+    resolution: {integrity: sha512-VxBKmeNcqQdiUQUW2Tzq0t377b54N2bMtXO/qiLa+6eRRmmC4qT3D4OnTGoT/U6O9aklQ/jTwbOtRMTTY8G0Ig==}
+    deprecated: This package is no longer supported. It's now a built-in Node module. If you've depended on crypto, you should switch to the one that's built-in.
+    dev: false
 
   /debug@2.6.9:
     resolution: {integrity: sha512-bC7ElrdJaJnPbAP+1EotYvqZsb3ecl5wi6Bfi6BJTUcNowp6cvspg0jXznRTKDjm/E7AdgFBVeAPVMNcKGsHMA==}

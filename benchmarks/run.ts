@@ -1,13 +1,14 @@
 import axios from 'axios';
+import { faker } from "@faker-js/faker";
 
 const SERVER_URL = 'http://localhost:8123';
-const PARTITIONS = 10;
-const RECORD_INTERVAL_MS = 10; // 1 second
+const PARTITIONS = 20;
+const RECORD_INTERVAL_MS = 20; // 2 seconds
 
-async function produce(partitionId) {
+async function produce(partitionId: string) {
   const payload = {
-    key: 'key',
-    value: 'value',
+    key: faker.finance.accountNumber(), // fake account number
+    value: faker.person.fullName(), // fake full name
   };
 
   try {
