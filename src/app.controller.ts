@@ -17,7 +17,6 @@ import { RecordCache } from './record/record.cache';
 import { ControlPlaneService } from './control.plane.service';
 import {
   RecordLogWriter,
-  RecordLogWriterConfiguration,
 } from './record/record.log.writer';
 import { RecordLogReader } from './record/record.log.reader';
 import * as path from 'path';
@@ -141,6 +140,8 @@ export class AppController {
     @Param() params: FetchRecordsParams,
     @Res() response: Response,
   ): Promise<void> {
+    const apiStartTime = Date.now();
+
     console.log(
       `[${new Date()}] Querying records for partition: ${params.partitionId}`,
     );
@@ -160,8 +161,14 @@ export class AppController {
     console.log(
       `[${new Date()}] Query records for partition ${params.partitionId} starting at position: ${position}.`,
     );
+    const queryStartTime = Date.now();
     const tail: Record[] = await reader.query(params.partitionId, position);
+    const queryEndTime = Date.now();
 
+    const queryLatency = queryEndTime - queryStartTime;
+    console.log(
+      `[${new Date()}] Querying partition: ${params.partitionId} for ${tail.length} messages took ${queryLatency}ms.`,
+    );
     console.log(
       `[${new Date()}] Found ${tail.length} new records for partition: ${params.partitionId}`,
     );
@@ -173,8 +180,18 @@ export class AppController {
       key: r.getKey(),
       value: r.getValue(),
     }));
+    // const result: any[] = tail.map((r) => ({
+    //   offset: r.getOffset().toString(),
+    //   key: r.getKey(),
+    //   value: r.getValue(),
+    // }));
     console.log(
-      `[${new Date()}] Returning ${result.length} records for partition: ${params.partitionId}`,
+      `[${new Date()}] Returning ${result.length} records for partition: ${params.partitionId}.`,
+    );
+    const apiEndTime = Date.now();
+    const apiLatency = apiEndTime - apiStartTime;
+    console.log(
+      `[${new Date()}] Fetching all records for partition ${params.partitionId} took ${apiLatency}ms.`,
     );
     response.json(result);
   }
