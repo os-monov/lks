@@ -39,13 +39,12 @@ export class Benchmarker {
   }
 
   private startProducer() {
-
     const { serverUrl, partitions, tps } = this.opts;
     const ac = autocannon({
       url: serverUrl,
       method: 'POST',
       connections: 300,
-      pipelining: 1,
+      pipelining: 10,
       duration: this.opts.runMinutes * 60,
       requests: [{
         method: 'POST',
@@ -62,6 +61,9 @@ export class Benchmarker {
       }],
       overallRate: tps * partitions,
     });
+    ac.on('reqError', (_, err) => {
+      console.error(`[${new Date()}] [autocannon] Request error:`, err);
+    })
     ac.on('done', () => console.log(`[autocannon] stopped.`));
   }
 
@@ -89,13 +91,14 @@ export class Benchmarker {
     const interval = base + jitter; // This is between 0 and 2*base (0-60s)
     this.fetchTimers[partitionId] = setTimeout(fetchFn, interval);
   }
+
 }
 
 // Example usage:
 const opts: BenchmarkerOptions = {
   serverUrl: 'http://localhost:8123',
   partitions: 100,
-  tps: 25,
+  tps: 10,
   fetchIntervalMs: 30000,
   runMinutes: 10,
 };

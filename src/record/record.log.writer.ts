@@ -14,6 +14,7 @@ import { PartitionSegment } from 'src/segment/partition.segment';
 import { ControlPlaneService } from 'src/control.plane.service';
 import { MetricsService } from 'src/metrics.service';
 import { ConsoleLogger } from 'src/console.logger';
+import { Mutex } from 'async-mutex';
 
 export interface RecordLogWriterConfiguration {
   logFilePath: string;
@@ -28,6 +29,7 @@ export class RecordLogWriter {
   private static readonly BATCH_DURATION_MS = 250;
   private bufferSubject = new Subject<BufferRecord>();
   private readonly offsets: Map<PartitionId, Offset>;
+  private readonly offsetLocks: Map<PartitionId, Mutex> = new Map();
 
   constructor(
     private readonly logFilePath: string,
@@ -42,6 +44,10 @@ export class RecordLogWriter {
     if (!fs.existsSync(this.logFilePath)) {
       fs.writeFileSync(this.logFilePath, '');
       this.logger.info(`[Writer @ ${this.logFilePath}] Created new log file.`);
+    }
+
+    for (const partitionId of this.offsets.keys()) {
+      this.offsetLocks.set(partitionId, new Mutex());
     }
 
     /* Initialize the buffer subject */
@@ -66,14 +72,25 @@ export class RecordLogWriter {
     key: string,
     value: string,
   ): Promise<Offset> {
-    if (!this.offsets.has(partitionId)) {
+    const lock = this.offsetLocks.get(partitionId);
+    if (!lock) {
       this.logger.error(
-        `InternalServiceException: Offset not found for partition: ${partitionId}.`,
+        `InternalServiceException: Mutex not found for partition: ${partitionId}.`,
       );
       throw new InternalServerException();
     }
-    const offset = this.offsets.get(partitionId);
-    this.offsets.set(partitionId, offset + 1n);
+
+    const offset: Offset = await lock.runExclusive(() => {
+      if (!this.offsets.has(partitionId)) {
+        this.logger.error(
+          `InternalServiceException: Offset not found for partition: ${partitionId}.`,
+        );
+        throw new InternalServerException();
+      }
+      const offset = this.offsets.get(partitionId);
+      this.offsets.set(partitionId, offset + 1n);
+      return offset;
+    });
 
     const bufferRecord = new BufferRecord(partitionId, offset, key, value);
     this.bufferSubject.next(bufferRecord);

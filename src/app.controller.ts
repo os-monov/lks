@@ -8,12 +8,7 @@ import {
   Post,
   Res,
 } from '@nestjs/common';
-import {
-  IsNumber,
-  IsString,
-  Max,
-  Min,
-} from 'class-validator';
+import { IsNumber, IsString, Max, Min } from 'class-validator';
 import { ApiResponse } from '@nestjs/swagger';
 import { Response } from 'express';
 import { Type } from 'class-transformer';
