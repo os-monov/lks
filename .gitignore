@@ -5,6 +5,7 @@
 # Logs
 logs
 *.log
+!test/data/sample.log
 npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
