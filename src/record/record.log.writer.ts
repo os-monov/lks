@@ -30,10 +30,10 @@ export class RecordLogWriter {
   private bufferSubject = new Subject<BufferRecord>();
   private readonly offsets: Map<PartitionId, Offset>;
   private readonly offsetLocks: Map<PartitionId, Mutex> = new Map();
+  private filePosition: FilePosition;
 
   constructor(
     private readonly logFilePath: string,
-    private position: FilePosition,
     offsets: Map<PartitionId, Offset>,
     private readonly controlPlaneService: ControlPlaneService,
     private readonly metricsService: MetricsService,
@@ -45,6 +45,9 @@ export class RecordLogWriter {
       fs.writeFileSync(this.logFilePath, '');
       this.logger.info(`[Writer @ ${this.logFilePath}] Created new log file.`);
     }
+
+    const stats = fs.statSync(this.logFilePath);
+    this.filePosition = stats.size;
 
     for (const partitionId of this.offsets.keys()) {
       this.offsetLocks.set(partitionId, new Mutex());
@@ -135,11 +138,11 @@ export class RecordLogWriter {
         commits.push({
           partitionId: Number(partitionId),
           offset: segmentOffset,
-          position: this.position,
+          position: this.filePosition,
         });
 
         // ensure position is correct
-        this.position += segmentBuffer.length;
+        this.filePosition += segmentBuffer.length;
       }
 
       if (buffers.length > 0) {

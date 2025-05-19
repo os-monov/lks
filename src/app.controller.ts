@@ -201,7 +201,6 @@ export class AppController {
       }
       return new RecordLogWriter(
         logFilePath,
-        0,
         offsets,
         this.controlPlaneService,
         this.metricsService,

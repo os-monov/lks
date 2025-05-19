@@ -23,7 +23,9 @@ The server supports two main operations: producing and fetching records.
 To produce a record to partition 5 with key `user43` and value `goodbye`:
 
 ```sh
-CURL -X POST http://localhost:8123/produce/5 -d "user43:goodbye"
+curl -X POST http://localhost:8123/produce/5 \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "key=user43&value=goodbye"
 ```
 
 ### Fetching Events
